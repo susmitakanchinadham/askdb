@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": ["Edit", "Bash(pytest *)", "Bash(git add *)", "Bash(git commit *)"],
+    "ask": ["Bash(git push *)"],
+    "deny": ["Read(./.env)"]
+  }
+}
