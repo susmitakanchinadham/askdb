@@ -20,7 +20,7 @@ Business users ask questions of one database in plain English and get a short pl
 | Area | Decision |
 |---|---|
 | Database | SQLite only: one database file, opened read-only |
-| Meaning of data | Admin-curated semantic layer; undefined terms are refused and logged |
+| Meaning of data | Admin-curated semantic layer: one YAML per database (`data/cloudmetrics.yaml` format); undefined terms are refused and logged |
 | Read-only | Enforced by opening the file read-only (`mode=ro`) with `PRAGMA query_only`, plus an authorizer callback and SQL validator (see 5.1) |
 | Trust | Every answer states its interpretation; glossary defaults with one-click change |
 | Access | Per-role table/column allowlists; no row-level rules in v1 |
@@ -36,7 +36,7 @@ Business users ask questions of one database in plain English and get a short pl
 Components:
 1. **Web UI** (React): chat thread, example questions, answer cards.
 2. **API service**: auth, session/conversation state, orchestration. Python (FastAPI) assumed; Next.js is acceptable if the team prefers TypeScript. Choose one before build.
-3. **Semantic layer**: versioned config (YAML/JSON in repo, edited by the admin) defining tables, columns, business names, synonyms, metric definitions, defaults, sensitivity, role allowlists.
+3. **Semantic layer**: one YAML file per database in `config/databases/` (format in section 4, reference: `data/cloudmetrics.yaml`), edited by the admin. It holds the connection, calendar, a free-text description with the business rules, and the table/column definitions.
 4. **Query planner (LLM)**: turns question + glossary + session context into a structured query plan and SQL.
 5. **Validator/executor**: validates SQL, runs it against the SQLite file with limits.
 6. **Answer composer**: builds the sentence from a template with numbers from result cells; the LLM only chooses phrasing (no numbers).
@@ -44,7 +44,7 @@ Components:
 
 Request flow:
 1. Authenticate user, resolve role.
-2. Build the prompt from the **role-filtered** glossary only (tables/columns the role may not see are never shown to the LLM, so they cannot be referenced or leaked in clarifications).
+2. Build the prompt from the **role-filtered** semantic layer (`description` plus the tables and columns the role may see) only (tables/columns the role may not see are never shown to the LLM, so they cannot be referenced or leaked in clarifications).
 3. LLM returns one of: `answer_plan` (interpretation + SQL), `clarify` (question + options), or `refuse` (reason code).
 4. Validate SQL (5.1). Reject and retry once with the validator error; on second failure, refuse politely.
 5. Execute with limits, fetch page 1 plus `COUNT`.
@@ -52,18 +52,35 @@ Request flow:
 
 ## 4. Semantic layer
 
-Each entry has: business name, synonyms, description in business language, underlying table/column or SQL expression, data type and unit, **sensitivity tag** (e.g. PII, financial), and allowed roles.
+One YAML file per database, in the format of `data/cloudmetrics.yaml` (copied to `config/databases/`). Nothing else describes the data to the model.
 
-Metric definitions are explicit (e.g. "Net sales = order total − refunds − tax, status in [paid, shipped]").
+```yaml
+name: cloudmetrics
+display_name: CloudMetrics SaaS Analytics
+path: ${CLOUDMETRICS_DB_PATH}      # opened read-only (mode=ro)
+calendar:
+  fiscal_year_start_month: 1
+description: |                     # free text, sent verbatim
+  ...
+tables:
+  - name: customers
+    description: ...
+    columns:
+      - { name: customer_id, type: INTEGER, primary_key: true, description: "..." }
+      - { name: plan_id, type: INTEGER, references: plans.plan_id }
+```
 
-Defaults the admin must set: fiscal calendar start, company timezone, default revenue measure, "region" meaning, what "customer" and "new customer" mean, and whether "last quarter" is fiscal or calendar.
-
-Large tables are tagged `requires_time_filter`; if the question lacks a period, the app asks "Which period?" with suggested choices.
+- **Connection**: `name`, `display_name`, `path` (environment variable expanded at load), `calendar.fiscal_year_start_month`.
+- **`description`**: the only home for business rules. It states the grain of each table, how tables join, metric definitions (MRR, revenue, churn rate, average resolution time, customer count, ARPU), status conventions and NULL rules, SQLite date-handling idioms, and which table answers what. It is sent to the model verbatim.
+- **`tables`**: each has `name`, `description` and `columns`. A column has `name`, `type` (INTEGER, TEXT, REAL, DATE, DATETIME), optional `primary_key`, optional `references: table.column` and a `description`. Dates are ISO text; the format is stated in the column description.
+- **Model-facing text** is exactly `description` plus `tables` rendered as `CREATE TABLE` DDL with the descriptions as comments. The model sees no other schema information.
+- Fields this format does not have: per-entry synonyms, sensitivity tags, allowed roles, `requires_time_filter`, a separate metrics section and company timezone. Where the spec mentions them, they are not part of the database file; role allowlists need a home (open item 8).
 
 Behaviours:
-- A term not in the glossary: refuse with "I can't answer that reliably yet" and log it as a **glossary miss** for the admin.
-- Glossary changes are versioned; each logged answer records the version used.
-- A validation tool checks the glossary against the live schema (dropped/renamed columns) at startup and on a schedule; broken entries disable the affected metrics with an admin alert rather than failing silently.
+- A term the description does not define: the planner refuses with "I can't answer that reliably yet" and the request is logged as a **glossary miss** for the admin.
+- Defaults (calendar year, which revenue measure, what "active customer" means) are the ones written in `description` and `calendar`. If a question needs a period the description cannot resolve (e.g. "last month" when the data ends in November 2025), the planner asks "Which period?".
+- The glossary version recorded with each logged answer is a hash of the YAML file contents.
+- A load-time check compares `tables`/`columns` with the live schema (dropped or renamed columns, wrong types). A broken table or column is removed from the model-facing text and raised to the admin rather than failing silently; metrics that depend on it cannot be answered.
 
 ## 5. Safety and correctness
 
@@ -90,7 +107,7 @@ Behaviours:
 
 ### 5.4 Ambiguity and confidence
 - Every answer card shows an **interpretation line** in business terms, e.g. "Net sales, fiscal Q3 (Jul–Sep), by billing region," with chips to change period, measure or grouping; changing a chip re-runs the query.
-- Defaults come from the glossary. Ask a clarifying question only when no default exists or two readings are about equally plausible. Clarifications offer 2–4 choices plus free text.
+- Defaults come from the semantic layer `description`. Ask a clarifying question only when no default exists or two readings are about equally plausible. Clarifications offer 2–4 choices plus free text.
 - Refuse when: term undefined, required data not permitted for the role, question is outside lookup/aggregate scope (e.g. forecasts, "why" questions), or validation fails twice.
 - The model is not allowed to guess missing metrics; its output schema forces `answer_plan`, `clarify` or `refuse` with a reason code.
 
@@ -145,6 +162,7 @@ Behaviours:
 - Integration tests against a test database opened read-only, confirming writes fail at the engine level and the authorizer blocks disallowed tables and columns.
 - Load/timeout tests proving the timeout and concurrency caps hold.
 - Access tests per role: forbidden columns never appear in prompts, SQL or results.
+- Golden set: `config/validation/<database>.yaml` (reference `data/cloudmetrics_eval.yaml`). Each case has `id`, `question`, `category`, and either `expected_sql` (pass when the generated SQL returns the same result set) or `expected_outcome: clarification | declined`; optional `conversation` (prior turns with SQL), `today` (clock for relative dates) and `notes`. Run by `uv run pytest tests/validation`; never loaded at startup or sent to the model.
 - Accuracy: collect "looks wrong" flags and review. A golden set is strongly recommended (see Open items).
 
 ## 12. Edge cases to handle explicitly
@@ -153,20 +171,21 @@ Behaviours:
 - Order/customer not found → say so, suggest checking the number.
 - Time zones and period boundaries (inclusive/exclusive end dates), partial current periods ("this month" is month-to-date and says so).
 - Currency and multiple currencies: do not sum across currencies without a defined conversion; refuse or split by currency.
-- Soft-deleted or test records excluded via glossary rules.
+- Soft-deleted or test records excluded via rules written in the `description`.
 - Percentages/averages computed in the database; division by zero shown as "Not applicable."
 - Result row count 0 on aggregates vs. true zero.
-- Joins that fan out and double-count: metric definitions declare the grain; validator-checked templates preferred for key metrics.
+- Joins that fan out and double-count: the `description` declares each table's grain and join path; validator-checked templates preferred for key metrics.
 - Very long text fields truncated in tables with expand.
 - Concurrent edits to the glossary while sessions are active: sessions pin the version at question time.
 
 ## 13. Open items
 
 1. **Stack**: FastAPI + React or Next.js. Decide before build. (Database engine is fixed: SQLite.)
-   - SQLite specifics to confirm: how the file is refreshed (snapshot schedule) and how large it is, since a single-file database has no replica and its date/time types are stored as text or numbers, so the glossary must declare each date column's format.
+   - SQLite specifics to confirm: how the file is refreshed (snapshot schedule) and how large it is, since a single-file database has no replica and its date/time types are stored as text or numbers, so each date column's format is declared in its column description.
 2. **Quality gate**: only the "looks wrong" button was chosen. Recommended addition: an admin-owned golden question set (~50–100 questions with verified answers) run on every prompt/model/glossary change, since non-technical users rarely report errors.
 3. **Pagination vs. load**: pagination was chosen over a capped single view; the 1,000 row ceiling and rate limits are this spec's proposed compromise. Confirm.
-4. **Guardrails not selected**: `EXPLAIN QUERY PLAN` cost pre-check and required-date-range on big tables were not chosen as global rules; the spec keeps date range as a per-table glossary flag. Confirm whether cost checks are wanted.
+4. **Guardrails not selected**: `EXPLAIN QUERY PLAN` cost pre-check and required-date-range on big tables were not chosen as global rules; the YAML format has no per-table time-filter flag, so period handling rests on the `description` rules. Confirm whether cost checks are wanted.
 5. **Row-level security**: accepted as out of scope; revisit if lookups of customer data prove sensitive.
 6. **Logging retention** and who the named admin(s) are.
 7. Provider data-handling approval for glossary text sent to the LLM.
+8. **Role allowlists**: the database YAML has no roles or sensitivity fields. Decide where per-role table/column allowlists live (separate roles file vs extending the YAML) before access control is built.
