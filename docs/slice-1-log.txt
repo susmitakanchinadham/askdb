@@ -1,0 +1,28 @@
+Slice 1: scaffold, semantic layer loader, read-only connection
+
+Added
+- pyproject.toml (uv, FastAPI, pyyaml; dev: pytest, httpx, ruff), uv.lock
+- config/databases/cloudmetrics.yaml (unchanged copy of data/cloudmetrics.yaml)
+- config/validation/cloudmetrics.yaml (copy of data/cloudmetrics_eval.yaml)
+- src/askdb/config.py: load_semantic_layer, check_references, check_against_database,
+  render_model_text, SemanticLayer.resolve_db_path; version = first 12 hex of sha256 of the file
+- src/askdb/db.py: open_readonly (mode=ro URI, query_only ON, attached databases limited to 0)
+- src/askdb/main.py: create_app, load_checked_layer, GET /health
+- tests/unit/test_config.py (+ snapshot of model-facing text), tests/integration/test_readonly.py
+
+Verified
+- uv run pytest: 23 passed
+- uv run ruff check . and ruff format --check .: clean
+- Rendered DDL snapshot reviewed by eye against the YAML
+- Schema drift: missing column, type mismatch, missing table (with dangling references) are
+  dropped from the model-facing text and listed in layer.issues
+
+Findings
+- PRAGMA query_only does not block ATTACH; ATTACH created an empty file on disk. Fixed with
+  conn.setlimit(SQLITE_LIMIT_ATTACHED, 0). Noted under slice 3.
+- The PLAN said ATTACH fails at engine level; it only does now because of that limit.
+- The YAML has 5 references, not 6 (first test draft miscounted).
+- Not run: a live uvicorn process; /health is covered through TestClient with lifespan.
+- starlette warns that TestClient with httpx is deprecated in favour of httpx2; left as is.
+
+Not committed: plan-askdb.txt (the /export file; you asked to keep it out earlier).

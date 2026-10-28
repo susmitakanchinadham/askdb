@@ -1,6 +1,6 @@
 # PLAN
 
-- [ ] **Slice 1: Scaffold, semantic layer loader, read-only connection**
+- [x] **Slice 1: Scaffold, semantic layer loader, read-only connection**
   - Files: `pyproject.toml`, `src/askdb/{__init__,main,config,db}.py`, `config/databases/cloudmetrics.yaml` (copied unchanged from `data/cloudmetrics.yaml`), `config/validation/cloudmetrics.yaml` (copied from `data/cloudmetrics_eval.yaml`), `tests/unit/test_config.py`, `tests/integration/test_readonly.py`
   - Config format (SPEC 4): `name`, `display_name`, `path` (`${CLOUDMETRICS_DB_PATH}`), `calendar.fiscal_year_start_month`, `description` (verbatim), `tables[]` with `columns[]` (`name`, `type`, `primary_key`, `references`, `description`). Loader renders `description` + `CREATE TABLE` DDL with comments as the model-facing text; version = hash of the file.
   - Verify: loader parses `data/cloudmetrics.yaml` and the rendered text matches a snapshot; `references` resolve to real columns; INSERT/DROP/ATTACH fail at engine level; schema-drift test (yaml column missing from a temp DB is removed from the model-facing text and reported); `GET /health`.
@@ -10,10 +10,12 @@
   - Verify: injection corpus (stacked statements, comments, CTE/subquery tricks, forbidden functions, disallowed column) is rejected; all golden `expected_sql` pass the validator.
 
 - [ ] **Slice 3: Executor, authorizer, limits and pagination**
+  - Note from slice 1: `PRAGMA query_only` does not stop `ATTACH`, which creates a file on disk. `db.open_readonly` now sets `SQLITE_LIMIT_ATTACHED` to 0 (tested). The authorizer must still deny ATTACH/PRAGMA/functions itself; reuse `open_readonly` rather than opening connections elsewhere.
   - Files: `src/askdb/executor.py`, `src/askdb/authorizer.py`, `tests/integration/test_executor.py`, `tests/integration/test_authorizer.py`, `tests/unit/test_pagination.py`
   - Verify: authorizer denies disallowed tables/columns and non-SELECT actions; every golden `expected_sql` returns rows; runaway query is interrupted at the deadline; over-1,000-row result truncates and is flagged; page 2 is stable and disjoint from page 1; concurrency cap holds.
 
 - [ ] **Slice 4: Planner with fake LLM client, first end-to-end ask**
+  - Note from slice 1: use `config.render_model_text(layer)` as the prompt body and `main.load_checked_layer()` to get a layer already pruned against the live database (`layer.issues` lists what was dropped; `layer.version` is the glossary version for logs). The golden set loads from `config/validation/cloudmetrics.yaml`.
   - Prompt input is exactly the semantic layer's `description` plus the rendered table DDL (SPEC 4), the question and prior interpretations.
   - Files: `src/askdb/{planner,llm,prompts}.py`, `src/askdb/api/ask.py`, `tests/unit/test_planner.py`, `tests/validation/test_golden.py`, `tests/validation/recorded/`
   - Verify: plan, clarify, refuse, retry-once, double-failure and outage unit tests; no result rows ever reach the LLM client; golden clarification (`revenue_ambiguous_mrr_or_invoices`, `recent_churn_relative`) and declined (`small_talk`, `data_change_request`, `injection_attempt`) outcomes; `uv run pytest tests/validation` passes offline on recorded outputs; opt-in live run against Claude.

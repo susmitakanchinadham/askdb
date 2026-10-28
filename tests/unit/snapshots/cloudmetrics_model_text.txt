@@ -1,0 +1,128 @@
+CloudMetrics is a B2B project-management SaaS product. This database holds its
+customer, subscription, billing and support data: 200 customer companies, 4 plans,
+about 280 subscriptions, about 1,800 invoices and about 700 support tickets, covering
+March 2022 to November 2025. All money is in USD.
+
+Grain of each table:
+- `customers`: one row per customer company account.
+- `plans`: one row per pricing tier (Starter $29, Professional $79, Business $149,
+  Enterprise $299 per month). Fixed seed data.
+- `subscriptions`: one row per subscription of a customer to a plan. A customer can
+  have several subscriptions over time (upgrades and downgrades), so a customer-level
+  question must aggregate or pick the latest subscription; do not assume one
+  subscription per customer.
+- `invoices`: one row per billing period charged to a subscription (monthly or
+  annual). `customer_id` is denormalised here and always matches the subscription's
+  customer.
+- `support_tickets`: one row per ticket raised by a customer.
+
+How the tables join:
+- `subscriptions.customer_id` -> `customers.customer_id`
+- `subscriptions.plan_id` -> `plans.plan_id`
+- `invoices.subscription_id` -> `subscriptions.subscription_id`
+- `invoices.customer_id` -> `customers.customer_id`
+- `support_tickets.customer_id` -> `customers.customer_id`
+
+Metric definitions (follow these exactly):
+- MRR (monthly recurring revenue) = SUM(subscriptions.mrr) WHERE status = 'active'.
+  The `mrr` column is already a monthly figure; never divide it. Exclude churned,
+  trial and paused subscriptions. "MRR by plan" joins `plans` on `plan_id`.
+- Revenue (total revenue, billings, payments) = SUM(invoices.amount) WHERE status = 'paid'.
+  Exclude pending, overdue and refunded invoices. Monthly revenue trends group by
+  strftime('%Y-%m', invoice_date).
+- Revenue and MRR are different metrics: revenue is actual paid invoices; MRR is the
+  recurring amount of active subscriptions. Do not substitute one for the other.
+- Churn rate for a period = number of subscriptions with status = 'churned' and
+  `end_date` inside the period, divided by the number of subscriptions that were
+  active at the start of the period (start_date < period start and (end_date IS NULL
+  or end_date >= period start)). Churn is counted at the subscription level, not the
+  customer level. A churned subscription always has status = 'churned' and a non-NULL
+  `end_date`.
+- Average resolution time = AVG((julianday(resolved_at) - julianday(created_at)) * 24)
+  in hours, over tickets WHERE resolved_at IS NOT NULL. Multiply by 24*60 for minutes.
+- Customer count = COUNT(*) FROM customers, regardless of subscription status.
+  "Active customers" = customers with at least one subscription with status = 'active'
+  (COUNT(DISTINCT customer_id)).
+- ARPU (average revenue per user) = SUM(mrr) / COUNT(*) over active subscriptions.
+  It is per subscription, not per customer.
+
+Status conventions and NULLs:
+- An active subscription has status = 'active' and end_date IS NULL. end_date is NULL
+  for every active, trial and paused subscription and is set for every churned one.
+- A resolved ticket has status 'resolved' or 'closed' and a non-NULL resolved_at;
+  open and in_progress tickets have resolved_at NULL. Always handle these NULLs in
+  WHERE clauses and aggregations.
+- Ticket priority order from most to least urgent: critical, high, medium, low.
+
+SQLite date handling (this is SQLite, not Postgres or MySQL):
+- Dates are ISO text: signup_date, start_date, end_date, invoice_date as YYYY-MM-DD;
+  created_at and resolved_at as YYYY-MM-DD HH:MM:SS.
+- Group by month with strftime('%Y-%m', col), by year with strftime('%Y', col),
+  by quarter with strftime('%Y', col) || '-Q' || ((CAST(strftime('%m', col) AS INTEGER) + 2) / 3).
+- Date differences: julianday(a) - julianday(b) gives days; multiply by 24 for hours.
+- Relative periods: date('now', '-12 months'). DATE_TRUNC, EXTRACT, DATEADD, DATEDIFF,
+  TIMESTAMPDIFF and EPOCH do not exist in SQLite.
+- The data ends in November 2025, so questions about "the last N months" relative to
+  today may return no rows; prefer explicit date ranges when the user names a period.
+
+Which table answers what:
+- Money actually received: `invoices`. Recurring run-rate: `subscriptions`.
+- Customer attributes (industry, company_size, country, account_owner, signup_date):
+  `customers`. Join to it for any breakdown by those attributes.
+- Plan names and list prices: `plans`. Actual charged recurring amount: `subscriptions.mrr`.
+- Support load and service quality: `support_tickets`.
+
+-- All registered customer companies. One row per company account.
+CREATE TABLE customers (
+  customer_id INTEGER PRIMARY KEY, -- Unique customer identifier
+  company_name TEXT, -- Registered company name
+  industry TEXT, -- Industry vertical: Technology, Healthcare, Finance, Retail, Education, Manufacturing
+  company_size TEXT, -- Size tier: Startup (1-50 employees), SMB (51-200), Mid-Market (201-1000), Enterprise (1001+)
+  country TEXT, -- Country where the company is headquartered
+  signup_date DATE, -- Date the customer first signed up, YYYY-MM-DD
+  account_owner TEXT -- Internal sales representative assigned to this account
+);
+
+-- Available subscription plans. Fixed seed data with 4 pricing tiers.
+CREATE TABLE plans (
+  plan_id INTEGER PRIMARY KEY, -- Unique plan identifier
+  plan_name TEXT, -- Tier name: Starter, Professional, Business, Enterprise
+  monthly_price REAL, -- List price per month in USD: Starter 29, Professional 79, Business 149, Enterprise 299
+  max_users INTEGER, -- Maximum user seats allowed on this plan
+  features TEXT -- Comma-separated list of features included in the plan
+);
+
+-- Customer subscriptions to plans. A customer may have several over time (upgrades/downgrades); the most recent is typically the active one.
+CREATE TABLE subscriptions (
+  subscription_id INTEGER PRIMARY KEY, -- Unique subscription identifier
+  customer_id INTEGER REFERENCES customers(customer_id),
+  plan_id INTEGER REFERENCES plans(plan_id),
+  start_date DATE, -- Date the subscription started, YYYY-MM-DD
+  end_date DATE, -- Date the subscription ended; NULL while ongoing (active, trial, paused)
+  status TEXT, -- active, churned, trial, paused
+  billing_cycle TEXT, -- monthly or annual
+  mrr REAL -- Monthly recurring revenue in USD for this subscription; plan price with up to +/-10% discount variance. Already monthly.
+);
+
+-- Billing invoices generated for subscriptions. One invoice per billing period (monthly or annual).
+CREATE TABLE invoices (
+  invoice_id INTEGER PRIMARY KEY, -- Unique invoice identifier
+  subscription_id INTEGER REFERENCES subscriptions(subscription_id),
+  customer_id INTEGER REFERENCES customers(customer_id), -- Denormalised; always matches the subscription's customer
+  invoice_date DATE, -- Date the invoice was issued, YYYY-MM-DD
+  amount REAL, -- Invoice amount in USD
+  status TEXT, -- paid, pending, overdue, refunded
+  payment_method TEXT -- credit_card, bank_transfer, paypal
+);
+
+-- Customer support tickets: issues, requests and bugs reported by customers.
+CREATE TABLE support_tickets (
+  ticket_id INTEGER PRIMARY KEY, -- Unique ticket identifier
+  customer_id INTEGER REFERENCES customers(customer_id),
+  created_at DATETIME, -- When the ticket was created, YYYY-MM-DD HH:MM:SS
+  resolved_at DATETIME, -- When the ticket was resolved; NULL while open or in_progress
+  priority TEXT, -- low, medium, high, critical
+  category TEXT, -- billing, technical, feature_request, onboarding, bug
+  status TEXT, -- open, in_progress, resolved, closed
+  subject TEXT -- Brief description of the issue
+);
