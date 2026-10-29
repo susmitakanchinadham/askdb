@@ -23,3 +23,6 @@ web/dist/
 Thumbs.db
 .idea/
 .vscode/
+
+# Audit log written by the service
+data/audit.db

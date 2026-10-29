@@ -118,7 +118,7 @@ Behaviours:
 ## 6. Access control
 
 - Authentication via company SSO; users map to **roles** (admin-managed mapping).
-- Each role has a table/column allowlist in the semantic layer. Sensitive columns (SSN, card, email, phone, etc.) are excluded from most roles.
+- Each role has a table/column allowlist in `config/roles/<database>.yaml`, separate from the semantic layer file (which stays unchanged). The model sees a copy of the layer narrowed to the role, with free-text description lines that name hidden tables or columns removed. Sensitive columns (SSN, card, email, phone, etc.) are excluded from most roles.
 - No row-level filtering in v1. Accepted risk: any permitted user can look up any customer within their allowed columns. Mitigations: per-user lookup rate limit, bulk results bounded by the 1,000 row ceiling, full audit log, and admin review of lookup volume.
 - The allowlist is enforced both by prompt filtering and by the SQL validator; for defence in depth, queries run against a database file or views containing only allowed tables and columns where practical (SQLite cannot restrict access per user).
 - **Before connecting real data**: admin signs off on the role allowlists and the PII lookup policy.
@@ -188,4 +188,6 @@ Behaviours:
 5. **Row-level security**: accepted as out of scope; revisit if lookups of customer data prove sensitive.
 6. **Logging retention** and who the named admin(s) are.
 7. Provider data-handling approval for glossary text sent to the LLM.
-8. **Role allowlists**: the database YAML has no roles or sensitivity fields. Decide where per-role table/column allowlists live (separate roles file vs extending the YAML) before access control is built.
+8. **Role allowlists**: decided: a separate `config/roles/<database>.yaml` (slice 6). Sample roles: admin, analyst (no `customers.account_owner`), support (customers without the account owner, plus support tickets). Admin sign-off on these lists is still required before real data (section 6).
+
+9. **Identity**: how the user and role reach the API is assumed, not decided: the SSO proxy sets `X-Askdb-User` and `X-Askdb-Role`, and the service must only be reachable through it. Confirm, including where the user-to-role mapping lives.

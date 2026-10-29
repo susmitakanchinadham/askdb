@@ -7,6 +7,8 @@ from fastapi.testclient import TestClient
 from askdb.llm import FakeLLMClient, LLMUnavailable
 from askdb.main import create_app
 
+ADMIN = {"X-Askdb-User": "tester", "X-Askdb-Role": "admin"}
+
 
 def reply(**kw):
     return json.dumps(kw)
@@ -18,7 +20,7 @@ def make_client(config_path, db_path, monkeypatch):
     clients = []
 
     def make(llm):
-        tc = TestClient(create_app(config_path, llm=llm))
+        tc = TestClient(create_app(config_path, llm=llm), headers=ADMIN)
         tc.__enter__()
         clients.append(tc)
         return tc

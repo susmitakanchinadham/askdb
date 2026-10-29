@@ -1,0 +1,46 @@
+Slice 6: Roles, access control, audit log
+
+Decisions (asked of the user): role allowlists live in a separate config/roles/cloudmetrics.yaml
+(SPEC item 8 resolved); sample roles admin, analyst, support. Assumed, flagged as new SPEC item 9:
+identity arrives as X-Askdb-User / X-Askdb-Role headers from the SSO proxy.
+
+Added
+- config/roles/cloudmetrics.yaml: admin (everything), analyst (no customers.account_owner),
+  support (customers without account_owner, plus support_tickets).
+- src/askdb/roles.py: load_roles (checks every table/column against the layer), hidden_terms,
+  layer_for_role (drops hidden tables/columns, dangling references, and any description text,
+  including whole bullets of the free-text glossary, that names a hidden term; singular forms of
+  hidden table names count), redact_description.
+- src/askdb/planner.py: Planner takes the hidden term set. A rejection naming a hidden table or
+  column is refused at once as "not_permitted" with no retry, so the hidden name never enters a
+  retry prompt. Refuse now carries validator_code and rejected_sql for the audit log.
+- src/askdb/audit.py: AuditLog on its own writable SQLite file (ASKDB_AUDIT_PATH, default
+  data/audit.db, git-ignored). One row per request: user, role, ts, question, outcome
+  (answer/clarify/refuse/error), reason, plan, sql, glossary version, row count, duration,
+  validator result. No result values; the table has no place for them. Nothing deletes rows
+  (retention is SPEC item 6).
+- main.py / api/ask.py: one planner per role; unknown or missing identity gets a 403 and an
+  audit row; the audit row is written before the response, so a failed write returns a clean 500
+  and no data. strings.py gained "not_permitted" and "no_access".
+- SPEC section 6 and open items 8 and 9, CLAUDE.md folder layout, .gitignore updated.
+- Tests: tests/unit/test_roles.py, tests/unit/test_audit.py, tests/integration/test_access.py;
+  tests/conftest.py points the audit log at a temp file for every test.
+
+Verified
+- 412 tests pass offline; ruff check and format clean.
+- Per role (analyst, support) no hidden table or column name appears in any prompt; hidden columns
+  and tables in a statement (select, alias, order by, join) are refused with the neutral message and
+  one model call; SELECT * returns visible columns only; paged results never contain a hidden
+  value; audit rows exist for answer, clarify, refuse (including validation failure) and error
+  with no result values; audit failure fails the request.
+
+Bug caught on the way
+- A scripted patch wrote a backspace character instead of \b into the hidden-name regex in
+  planner.py, so the refusal never fired and the retry returned an answer (the test caught it).
+  Fixed; no other source file contains a backspace.
+
+Limits
+- The glossary redaction is word-based, so a restricted role loses some useful text (support loses
+  the customer-count definition because it mentions subscriptions). Admin tunes via the roles file.
+- Identity headers are trusted; the service is only safe behind the proxy.
+- Planners are built once per role at startup; changing the roles file needs a restart.

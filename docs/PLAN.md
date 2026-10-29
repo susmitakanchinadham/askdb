@@ -29,14 +29,15 @@
   - Files: `src/askdb/{composer,number_check,strings}.py`, `tests/unit/test_composer.py`, `tests/unit/test_copy_lint.py`
   - Verify: wrong LLM sentence falls back to table-only; empty, NULL and divide-by-zero cases; copy-lint fails on any banned word across user-facing strings and API errors; golden cases produce sentences matching result cells.
 
-- [ ] **Slice 6: Roles, access control, audit log**
+- [x] **Slice 6: Roles, access control, audit log**
   - Note from slice 4: `Planner` is built once at startup from the full layer (`main.create_app`), so role filtering needs a planner (or `plan(..., layer/allowed)` argument) per role; the prompt text comes from `render_model_text(layer)`, so pass it the role-filtered layer. `/ask` has no user or role yet and calls `Planner.plan` directly.
   - Note from slice 2: pass the role-filtered `{table: columns}` as `allowed`. A hidden column is reported as `Code.UNKNOWN_COLUMN` and `SELECT *` silently expands to visible columns only, so the neutral role refusal must be chosen by the caller, not read from the validator message.
-  - Blocked on SPEC open item 8: the database YAML has no roles or sensitivity fields, so decide where role allowlists live (separate roles file vs extending the YAML) before starting. The database YAML is not changed on assumption.
+  - Decided with the user: separate `config/roles/cloudmetrics.yaml` (SPEC item 8); roles admin, analyst, support.
   - Files: role allowlist config (location per item 8), `src/askdb/{roles,audit}.py`, `tests/integration/test_access.py`, `tests/unit/test_audit.py`
   - Verify: per role, forbidden columns never appear in prompt, SQL or results; hidden-column question gets a neutral refusal; audit row written for answer, clarify, refuse and error with no result values.
 
 - [ ] **Slice 7: Follow-ups, chip re-run, "This looks wrong", rate limit**
+  - Note from slice 6: `app.state.planners[role]` holds one planner per role (built from `roles.layer_for_role`); a follow-up or chip re-run must use the same role's planner and `validate_sql` allowlist. `/ask` writes its audit row in `api/ask.py` (`_answer` returns body + audit fields); feedback rows should carry the same `user`/`role`. Identity is two proxy headers (SPEC item 9); the per-user rate limit and one-running-query rule can key on `X-Askdb-User`.
   - Note from slice 5: `composer.compose(interpretation, page, phraser=None)` accepts an optional phraser (`(interpretation, labels) -> template with {c0} slots`) but nothing calls the model for it yet. If it is wired, the prompt may carry only the interpretation and column labels, never cells; a template with invented numbers or banned words already falls back to table-only. A chip re-run should go through `compose` again.
   - Note from slice 4: `Planner.plan(question, prior_interpretations, today)` already takes prior interpretations (text lines, no rows). `tests/validation/test_golden.py` skips cases with `conversation`; add `mrr_by_plan_followup_industry` and a recorded reply for it here. `/ask` takes no session id yet.
   - Note from slice 4: `executor.ordered_sql` leaves a statement that has its own LIMIT unchanged (tie-breaker keys would change which rows it keeps), so pages of such a statement rely on SQLite's stable order for an unchanged snapshot.
@@ -45,6 +46,7 @@
   - Verify: golden follow-up `mrr_by_plan_followup_industry` passes; follow-up under a restricted role cannot reach hidden columns; session expiry (30 min) and "New question" reset; chip change re-runs through the same validator; feedback row holds question, plan, SQL, glossary version and row count; per-user rate limit.
 
 - [ ] **Slice 8: React web UI**
+  - Note from slice 6: every `/ask` call needs `X-Askdb-User` and `X-Askdb-Role` headers (set by the SSO proxy; for local runs send them from the dev server proxy); without them the answer is a 403 with `status: "error"` and the "You don't have access yet" message. A role-hidden question returns `status: "declined"`, `reason: "not_permitted"`.
   - Note from slice 5: `/ask` answers now return `columns` (business labels) and `rows` (already formatted strings: `$1,234`, `4.3%`, `Not recorded`), plus `sentence`, `note` ("Here are the figures." when the sentence is withheld) and `truncation_note`. Currency and percent formatting is guessed from column-name hints in `composer.py`; replace with units declared in the semantic layer if the admin wants control. Validation and server errors are `{status: "error", message}` with clean wording.
   - Files: `web/` (`App`, `Chat`, `AnswerCard`, `ResultTable`, `Chips`, `Clarify` components, API client, `web/tests/`), `tests/e2e` smoke
   - Verify: component tests for card, pagination, chips re-run and clarify choices; axe accessibility check; manual run against `data/cloudmetrics.db` with three golden questions plus one refusal.

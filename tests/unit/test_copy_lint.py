@@ -68,7 +68,9 @@ def make_client(config_path, db_path, monkeypatch, llm, raise_server_exceptions=
 
     monkeypatch.setenv("CLOUDMETRICS_DB_PATH", str(db_path))
     return TestClient(
-        create_app(config_path, llm=llm), raise_server_exceptions=raise_server_exceptions
+        create_app(config_path, llm=llm),
+        raise_server_exceptions=raise_server_exceptions,
+        headers={"X-Askdb-User": "tester", "X-Askdb-Role": "admin"},
     )
 
 
@@ -134,7 +136,7 @@ def test_unexpected_failure_returns_a_clean_message(config_path, db_path, monkey
     with make_client(
         config_path, db_path, monkeypatch, FakeLLMClient([]), raise_server_exceptions=False
     ) as client:
-        client.app.state.planner = None  # makes the handler blow up
+        client.app.state.planners = None  # makes the handler blow up
         resp = client.post("/ask", json={"question": "x"})
     assert resp.status_code == 500
     assert resp.json() == {"status": "error", "message": strings.MESSAGES["unexpected"]}

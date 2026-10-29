@@ -19,6 +19,8 @@ MESSAGES = {
     "failed": "I couldn't find an answer to that. Try rephrasing or narrowing the question.",
     "slow": "That search took too long. Try a shorter period or a narrower question.",
     "busy": "Lots of people are asking questions right now. Please try again shortly.",
+    "not_permitted": "That information isn't available to your role.",
+    "no_access": "You don't have access yet. Please sign in or contact your admin.",
     "invalid": "Please type a question.",
     "unexpected": "Something went wrong on our side. Please try again shortly.",
 }

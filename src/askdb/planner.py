@@ -16,7 +16,7 @@ from datetime import date
 from askdb.config import SemanticLayer, render_model_text
 from askdb.llm import LLMClient, LLMUnavailable
 from askdb.prompts import REFUSE_REASONS, build_system, build_user
-from askdb.validator import Allowed, ValidationResult, allowed_from_layer, validate_sql
+from askdb.validator import Allowed, Code, ValidationResult, allowed_from_layer, validate_sql
 
 MAX_OPTIONS = 4
 MIN_OPTIONS = 2
@@ -37,6 +37,8 @@ class Clarify:
 @dataclass(frozen=True)
 class Refuse:
     reason: str  # one of REFUSE_REASONS, or "validation_failed" after two rejections
+    validator_code: str | None = None  # for the audit log
+    rejected_sql: str | None = None  # the last statement the checker refused (audit only)
 
 
 @dataclass(frozen=True)
@@ -50,10 +52,11 @@ _FENCE = re.compile(r"^```(?:json)?\s*|\s*```$")
 
 
 class _BadReply(Exception):
-    def __init__(self, code: str, message: str):
+    def __init__(self, code: str, message: str, sql: str | None = None):
         super().__init__(message)
         self.code = code
         self.message = message
+        self.sql = sql
 
 
 def _parse(text: str) -> dict:
@@ -67,8 +70,20 @@ def _parse(text: str) -> dict:
 
 
 class Planner:
-    def __init__(self, client: LLMClient, layer: SemanticLayer, allowed: Allowed | None = None):
+    def __init__(
+        self,
+        client: LLMClient,
+        layer: SemanticLayer,
+        allowed: Allowed | None = None,
+        hidden: frozenset[str] = frozenset(),
+    ):
+        """`layer` and `allowed` are already narrowed to the role; `hidden` is what was removed."""
         self.client = client
+        self._hidden = (
+            re.compile(r"\b(?:" + "|".join(map(re.escape, sorted(hidden))) + r")\b", re.IGNORECASE)
+            if hidden
+            else None
+        )
         self.model_text = render_model_text(layer)
         self.allowed = allowed if allowed is not None else allowed_from_layer(layer)
         self.glossary_version = layer.version
@@ -81,6 +96,7 @@ class Planner:
     ) -> Outcome:
         system = build_system(self.model_text, today or date.today())
         rejection: tuple[str, str] | None = None
+        last = _BadReply("bad_reply", "")
         for _attempt in range(2):
             user = build_user(question, prior_interpretations, rejection)
             try:
@@ -90,8 +106,16 @@ class Planner:
             try:
                 return self._interpret(_parse(reply))
             except _BadReply as bad:
+                last = bad
+                if self._names_hidden(bad):
+                    # Do not echo the hidden name back to the model in a retry prompt.
+                    return Refuse("not_permitted", bad.code, bad.sql)
                 rejection = (bad.code, bad.message)
-        return Refuse("validation_failed")
+        return Refuse("validation_failed", last.code, last.sql)
+
+    def _names_hidden(self, bad: _BadReply) -> bool:
+        blocked = (str(Code.TABLE_NOT_ALLOWED), str(Code.UNKNOWN_COLUMN))
+        return bool(self._hidden and bad.code in blocked and self._hidden.search(bad.message))
 
     def _interpret(self, data: dict) -> Outcome:
         kind = data["type"]
@@ -114,6 +138,6 @@ class Planner:
                 raise _BadReply("bad_reply", "An answer_plan needs 'interpretation' and 'sql'.")
             result = validate_sql(sql, self.allowed)
             if not result.ok:
-                raise _BadReply(str(result.code), result.message)
+                raise _BadReply(str(result.code), result.message, sql)
             return Answer(interpretation, result)
         raise _BadReply("bad_reply", "'type' must be answer_plan, clarify or refuse.")

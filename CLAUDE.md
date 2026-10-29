@@ -34,6 +34,7 @@ uv run ruff check . && uv run ruff format --check .   # lint
 ```
 docs/        SPEC.md, PLAN.md, one-pager.md
 config/databases/    semantic layer per database (see data/cloudmetrics.yaml)
+config/roles/        role allowlists per database
 config/validation/   golden question sets (see data/cloudmetrics_eval.yaml)
 data/        sample SQLite db + sample configs
 src/askdb/   API, planner, validator, executor, composer, audit

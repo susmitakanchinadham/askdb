@@ -71,7 +71,8 @@ def test_rejected_sql_is_retried_once_with_the_validator_message(layer):
 def test_two_failures_refuse_and_do_not_retry_again(layer):
     bad = {**GOOD, "sql": "SELECT secret FROM plans"}
     p, client = planner(layer, bad, bad, GOOD)
-    assert p.plan("MRR?", today=TODAY) == Refuse("validation_failed")
+    out = p.plan("MRR?", today=TODAY)
+    assert out == Refuse("validation_failed", "unknown_column", bad["sql"])
     assert len(client.calls) == 2
 
 

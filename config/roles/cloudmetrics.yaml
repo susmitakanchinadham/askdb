@@ -1,0 +1,28 @@
+# Role allowlists for the `cloudmetrics` database (SPEC 6). Kept apart from the glossary in
+# config/databases/cloudmetrics.yaml, which is unchanged. A role sees only what is listed here:
+# the model prompt, the checks on generated statements and the executor all use the same list.
+#
+# `tables` is either "*" (everything) or a map of table -> "*" or a list of column names.
+# Admin sign-off on these lists is required before real data is connected (SPEC 6).
+
+database: cloudmetrics
+
+roles:
+  admin:
+    description: Full access to every table and column.
+    tables: "*"
+
+  analyst:
+    description: Everything except the internal account owner on customers.
+    tables:
+      customers: [customer_id, company_name, industry, company_size, country, signup_date]
+      plans: "*"
+      subscriptions: "*"
+      invoices: "*"
+      support_tickets: "*"
+
+  support:
+    description: Customers (without the internal account owner) and support tickets only.
+    tables:
+      customers: [customer_id, company_name, industry, company_size, country, signup_date]
+      support_tickets: "*"
