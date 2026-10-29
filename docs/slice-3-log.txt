@@ -1,0 +1,24 @@
+Slice 3: Executor, authorizer, limits and pagination
+
+Added
+- src/askdb/authorizer.py: make_authorizer(tables, columns). Allows SELECT, reads of exactly the
+  validator's tables/columns (empty column name allowed for COUNT(*)), and a function allowlist.
+  Denies every other action (writes, PRAGMA, ATTACH, recursion, extensions, unknown functions).
+- src/askdb/executor.py: Executor(db_path, timeout=10, max_concurrent=4, row_ceiling=1000).
+  execute(validated, page) opens a fresh open_readonly connection, installs the authorizer built
+  from result.tables/columns and a progress-handler deadline, runs result.sql only.
+  Pages of 25 via LIMIT/OFFSET; ordered_sql() appends every result column by position to the
+  ORDER BY as a tie-breaker; total is counted up to ceiling+1 so truncation is flagged.
+  Errors: QueryTimeout, TooBusy (non-blocking semaphore), ExecutionError.
+- Tests: tests/integration/test_authorizer.py, tests/integration/test_executor.py,
+  tests/unit/test_pagination.py.
+
+Verified
+- Full suite: 238 passed. ruff check and format clean.
+- All golden SQL returns rows under the authorizer; runaway 4-way join is interrupted at 0.3 s;
+  1,831-row query truncates at 1,000 and is flagged; pages 1 and 2 are disjoint and stable even
+  when ordering on a low-cardinality column; concurrency cap refuses a second query and releases.
+
+Notes recorded in docs/PLAN.md under slices 4, 5 and 7.
+Unrelated working-tree changes (.claude/hooks/plan-status.sh, .claude/agents/, plan-askdb.txt)
+were left uncommitted.

@@ -9,13 +9,14 @@
   - Files: `src/askdb/validator.py`, `tests/unit/test_validator.py`
   - Verify: injection corpus (stacked statements, comments, CTE/subquery tricks, forbidden functions, disallowed column) is rejected; all golden `expected_sql` pass the validator.
 
-- [ ] **Slice 3: Executor, authorizer, limits and pagination**
+- [x] **Slice 3: Executor, authorizer, limits and pagination**
   - Note from slice 2: `validator.validate_sql(sql, allowed)` returns `ValidationResult` (`ok`, `code`, `message`, `sql`, `tables`, `columns`). Execute `result.sql` (regenerated from the checked tree, stars expanded, comments removed), never the original text. `allowed` is `{table: columns}` from `validator.allowed_from_layer(layer)`. The authorizer should allow exactly `result.tables` and `result.columns` as a cross-check.
   - Note from slice 1: `PRAGMA query_only` does not stop `ATTACH`, which creates a file on disk. `db.open_readonly` now sets `SQLITE_LIMIT_ATTACHED` to 0 (tested). The authorizer must still deny ATTACH/PRAGMA/functions itself; reuse `open_readonly` rather than opening connections elsewhere.
   - Files: `src/askdb/executor.py`, `src/askdb/authorizer.py`, `tests/integration/test_executor.py`, `tests/integration/test_authorizer.py`, `tests/unit/test_pagination.py`
   - Verify: authorizer denies disallowed tables/columns and non-SELECT actions; every golden `expected_sql` returns rows; runaway query is interrupted at the deadline; over-1,000-row result truncates and is flagged; page 2 is stable and disjoint from page 1; concurrency cap holds.
 
 - [ ] **Slice 4: Planner with fake LLM client, first end-to-end ask**
+  - Note from slice 3: run answers with `Executor(db_path).execute(validated, page=1)` (`executor.py`); it returns a `Page` (`columns`, `rows`, `total` capped at 1,000, `truncated`, `has_more`, `as_of`) or raises `QueryTimeout`, `TooBusy`, `ExecutionError`. Their messages are for logs only; map each to business wording in the API layer. One `Executor` instance owns the concurrency cap, so create it once at startup.
   - Note from slice 2: on a rejection feed `result.code` and `result.message` back to the model for the single retry; they are written for the model and must never reach the user (they say SELECT, table, column). Only a small set of functions is allowed (see `_SAFE_TYPED` / `_SAFE_ANONYMOUS` in `validator.py`); `printf`, `hex`, `random`, `json_*`, recursive CTEs and bare `*` in non-COUNT places are refused, so tell the model the allowed list in the prompt.
   - Note from slice 1: use `config.render_model_text(layer)` as the prompt body and `main.load_checked_layer()` to get a layer already pruned against the live database (`layer.issues` lists what was dropped; `layer.version` is the glossary version for logs). The golden set loads from `config/validation/cloudmetrics.yaml`.
   - Prompt input is exactly the semantic layer's `description` plus the rendered table DDL (SPEC 4), the question and prior interpretations.
@@ -23,6 +24,7 @@
   - Verify: plan, clarify, refuse, retry-once, double-failure and outage unit tests; no result rows ever reach the LLM client; golden clarification (`revenue_ambiguous_mrr_or_invoices`, `recent_churn_relative`) and declined (`small_talk`, `data_change_request`, `injection_attempt`) outcomes; `uv run pytest tests/validation` passes offline on recorded outputs; opt-in live run against Claude.
 
 - [ ] **Slice 5: Answer composer and wording lint**
+  - Note from slice 3: the executor raises exceptions with technical text (`QueryTimeout` -> suggest a shorter period, `TooBusy` -> try again shortly, `ExecutionError` -> generic failure); the copy-lint must cover the strings chosen for these, and the "more than 1,000 results" message driven by `Page.truncated`.
   - Files: `src/askdb/{composer,number_check,strings}.py`, `tests/unit/test_composer.py`, `tests/unit/test_copy_lint.py`
   - Verify: wrong LLM sentence falls back to table-only; empty, NULL and divide-by-zero cases; copy-lint fails on any banned word across user-facing strings and API errors; golden cases produce sentences matching result cells.
 
@@ -33,6 +35,7 @@
   - Verify: per role, forbidden columns never appear in prompt, SQL or results; hidden-column question gets a neutral refusal; audit row written for answer, clarify, refuse and error with no result values.
 
 - [ ] **Slice 7: Follow-ups, chip re-run, "This looks wrong", rate limit**
+  - Note from slice 3: the executor only has a global concurrency cap. "One running query per user" and the requests-per-minute limit (SPEC 5.1 item 6) still need a per-user guard in front of `Executor.execute`.
   - Files: `src/askdb/{session,feedback}.py`, planner/prompts and `api/` extensions, `tests/integration/test_followup.py`, `tests/unit/test_session.py`
   - Verify: golden follow-up `mrr_by_plan_followup_industry` passes; follow-up under a restricted role cannot reach hidden columns; session expiry (30 min) and "New question" reset; chip change re-runs through the same validator; feedback row holds question, plan, SQL, glossary version and row count; per-user rate limit.
 
