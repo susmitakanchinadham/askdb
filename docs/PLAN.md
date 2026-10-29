@@ -23,7 +23,7 @@
   - Files: `src/askdb/{planner,llm,prompts}.py`, `src/askdb/api/ask.py`, `tests/unit/test_planner.py`, `tests/validation/test_golden.py`, `tests/validation/recorded/`
   - Verify: plan, clarify, refuse, retry-once, double-failure and outage unit tests; no result rows ever reach the LLM client; golden clarification (`revenue_ambiguous_mrr_or_invoices`, `recent_churn_relative`) and declined (`small_talk`, `data_change_request`, `injection_attempt`) outcomes; `uv run pytest tests/validation` passes offline on recorded outputs; opt-in live run against Claude.
 
-- [ ] **Slice 5: Answer composer and wording lint**
+- [x] **Slice 5: Answer composer and wording lint**
   - Note from slice 4: `POST /ask` (`api/ask.py`) returns the interpretation line and the table with raw column aliases; the composer adds the sentence and business column names. User-facing strings currently live in `api/ask.py` `MESSAGES` and the clarify question/options come straight from the model; move both into `strings.py` and put them under the copy-lint (including model-written clarify text).
   - Note from slice 3: the executor raises exceptions with technical text (`QueryTimeout` -> suggest a shorter period, `TooBusy` -> try again shortly, `ExecutionError` -> generic failure); the copy-lint must cover the strings chosen for these, and the "more than 1,000 results" message driven by `Page.truncated`.
   - Files: `src/askdb/{composer,number_check,strings}.py`, `tests/unit/test_composer.py`, `tests/unit/test_copy_lint.py`
@@ -37,6 +37,7 @@
   - Verify: per role, forbidden columns never appear in prompt, SQL or results; hidden-column question gets a neutral refusal; audit row written for answer, clarify, refuse and error with no result values.
 
 - [ ] **Slice 7: Follow-ups, chip re-run, "This looks wrong", rate limit**
+  - Note from slice 5: `composer.compose(interpretation, page, phraser=None)` accepts an optional phraser (`(interpretation, labels) -> template with {c0} slots`) but nothing calls the model for it yet. If it is wired, the prompt may carry only the interpretation and column labels, never cells; a template with invented numbers or banned words already falls back to table-only. A chip re-run should go through `compose` again.
   - Note from slice 4: `Planner.plan(question, prior_interpretations, today)` already takes prior interpretations (text lines, no rows). `tests/validation/test_golden.py` skips cases with `conversation`; add `mrr_by_plan_followup_industry` and a recorded reply for it here. `/ask` takes no session id yet.
   - Note from slice 4: `executor.ordered_sql` leaves a statement that has its own LIMIT unchanged (tie-breaker keys would change which rows it keeps), so pages of such a statement rely on SQLite's stable order for an unchanged snapshot.
   - Note from slice 3: the executor only has a global concurrency cap. "One running query per user" and the requests-per-minute limit (SPEC 5.1 item 6) still need a per-user guard in front of `Executor.execute`.
@@ -44,5 +45,6 @@
   - Verify: golden follow-up `mrr_by_plan_followup_industry` passes; follow-up under a restricted role cannot reach hidden columns; session expiry (30 min) and "New question" reset; chip change re-runs through the same validator; feedback row holds question, plan, SQL, glossary version and row count; per-user rate limit.
 
 - [ ] **Slice 8: React web UI**
+  - Note from slice 5: `/ask` answers now return `columns` (business labels) and `rows` (already formatted strings: `$1,234`, `4.3%`, `Not recorded`), plus `sentence`, `note` ("Here are the figures." when the sentence is withheld) and `truncation_note`. Currency and percent formatting is guessed from column-name hints in `composer.py`; replace with units declared in the semantic layer if the admin wants control. Validation and server errors are `{status: "error", message}` with clean wording.
   - Files: `web/` (`App`, `Chat`, `AnswerCard`, `ResultTable`, `Chips`, `Clarify` components, API client, `web/tests/`), `tests/e2e` smoke
   - Verify: component tests for card, pagination, chips re-run and clarify choices; axe accessibility check; manual run against `data/cloudmetrics.db` with three golden questions plus one refusal.

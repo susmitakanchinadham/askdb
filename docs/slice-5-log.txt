@@ -1,0 +1,35 @@
+Slice 5: Answer composer and wording lint
+
+Added
+- src/askdb/strings.py: every fixed user-facing string (moved MESSAGES out of api/ask.py), the
+  banned-word detector (sql, query/queries, table(s), column(s), timeout/time-out, schema,
+  stack trace; whole words only) and ALL_STRINGS.
+- src/askdb/number_check.py: sentence_matches_result. Every number and date in a sentence must
+  match a result cell (formatted or rounded to the sentence's own precision) or a count the
+  composer states; the interpretation text is removed before checking. Names are not checked
+  (they only enter through cells).
+- src/askdb/composer.py: compose(interpretation, page, phraser=None) -> sentence, note, business
+  column labels, formatted display rows, truncation note. NULL -> "Not recorded" (divide by zero is
+  NULL in SQLite); empty -> "No matching records found." + interpretation + broadening hint;
+  over the ceiling -> "more than 1,000 results" + narrowing hint. A phraser template with an
+  invented number, wrong value, unknown slot or banned word gives table-only with
+  "Here are the figures.".
+- api/ask.py now returns sentence/note/labels/formatted rows; model-written interpretation and
+  clarify text containing banned words is dropped / declined; main.py replaces FastAPI's default
+  422 and 500 bodies with clean messages.
+- Tests: tests/unit/test_composer.py, tests/unit/test_copy_lint.py,
+  tests/validation/test_golden_sentences.py; test_ask.py updated for the new response shape.
+
+Verified
+- 367 tests pass offline; ruff check and format clean.
+- Wrong sentence -> table only; empty, NULL and divide-by-zero cases; copy-lint covers every fixed
+  string and every /ask response and error shape (answer, refuse, clarify, validation failure,
+  slow search, outage, empty input, unexpected failure); all 22 golden answers produce sentences
+  containing the formatted cell values.
+
+Not done / limits
+- No model is asked for phrasing yet (phraser hook only; tested with stub functions).
+- Currency/percent formatting is inferred from column-name hints; percent assumes a stored fraction.
+- Rounding is half-up (Decimal), so 4.25% shows 4.3%.
+
+Notes recorded in docs/PLAN.md under slices 7 and 8.

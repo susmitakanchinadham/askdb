@@ -6,8 +6,11 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
+from askdb import strings
 from askdb.api.ask import router as ask_router
 from askdb.config import SemanticLayer, check_against_database, load_semantic_layer
 from askdb.db import open_readonly
@@ -43,6 +46,18 @@ def create_app(config_path: Path | None = None, llm: LLMClient | None = None) ->
 
     app = FastAPI(title="AskDB", lifespan=lifespan)
     app.include_router(ask_router)
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(request: Request, exc: RequestValidationError):
+        return JSONResponse(
+            {"status": "error", "message": strings.MESSAGES["invalid"]}, status_code=422
+        )
+
+    @app.exception_handler(Exception)
+    async def unexpected(request: Request, exc: Exception):
+        return JSONResponse(
+            {"status": "error", "message": strings.MESSAGES["unexpected"]}, status_code=500
+        )
 
     @app.get("/health")
     def health() -> dict:

@@ -43,7 +43,9 @@ def test_answer_returns_interpretation_and_table_without_the_statement(make_clie
     body = make_client(llm).post("/ask", json={"question": "MRR by plan?"}).json()
     assert body["status"] == "answer"
     assert body["interpretation"] == "Active MRR by plan"
-    assert body["columns"] == ["plan_name", "total_mrr"]
+    assert body["columns"] == ["Plan Name", "Total MRR"]
+    assert body["sentence"] == "Found 4 results for Active MRR by plan."
+    assert body["rows"][0][1].startswith("$")
     assert body["total"] == len(body["rows"]) == 4
     assert not body["truncated"]
     assert "select" not in json.dumps(body).lower()
