@@ -1,0 +1,51 @@
+Slice 2: SQL validator (AST only)
+
+Added
+- src/askdb/validator.py: validate_sql(sql, allowed) -> ValidationResult(code, message, sql,
+  tables, columns); allowed_from_layer(layer); Code enum
+- tests/unit/test_validator.py (156 tests)
+- sqlglot dependency (pyproject.toml, uv.lock)
+
+How it decides
+- sqlglot parse (sqlite dialect); exactly one statement; root must be a query
+- forbidden nodes anywhere in the tree (DML, DDL, PRAGMA, ATTACH, Command, INTO, lateral/unnest),
+  placeholders, any recursive CTE (stricter than SPEC's "unbounded", noted below)
+- tables checked with sqlglot scopes, so a CTE named like a real table cannot hide what it reads;
+  table-valued functions and schema-qualified names refused
+- functions: allowlist. Unknown functions (all dangerous ones come through as Anonymous) must be
+  in _SAFE_ANONYMOUS; typed functions must be in _SAFE_TYPED
+- qualify() against the allowed columns; unknown columns refused
+- extra pass on the qualified tree (see Findings); comments stripped
+- result.sql is regenerated from the checked tree, so the text that runs is the text that was checked
+
+Verified
+- uv run pytest: 179 passed (23 from slice 1)
+- ruff check and format --check: clean
+- all 25 golden SQL statements (24 expected_sql + 1 conversation turn) pass, and the rewritten SQL
+  returns the same rows as the original on data/cloudmetrics.db
+- 30 allowed functions/operators return the same value before and after the rewrite
+- 67 hostile statements in the corpus rejected with the expected code (stacked statements, non-SELECT, forbidden
+  and hidden-in-subquery functions, table functions, system tables, CTE shadowing, recursion,
+  placeholders, unknown columns, empty/broken input, deep nesting), plus 17 restricted-column queries
+- restricted allowlist: hidden columns rejected in SELECT/WHERE/GROUP BY/HAVING/ORDER BY/JOIN/
+  window/FILTER/subquery/CTE/UNION; SELECT * expands to visible columns only
+
+Findings (first run of the tests failed on two things; both fixed in the code, tests not weakened)
+- sqlglot copies comments into the regenerated SQL, and rewrites "*/" inside a line comment as
+  "* /". Comments are now stripped from the tree.
+- qualify() does not validate a bare name in HAVING (it may be an alias), so
+  "HAVING MAX(account_owner)" with account_owner hidden passed and the rewrite still read it.
+  SQLite resolves such a name to a real column before an alias. Fixed with a pass over the
+  qualified tree: every column must be qualified, except a bare ORDER BY term naming a result
+  column; any "*" other than COUNT(*) is refused.
+- Consequence: an alias that shadows a hidden column is expanded to its expression, so the rewrite
+  can differ in meaning from what SQLite would have done with the original text.
+- The authorizer (slice 3) stays necessary; this validator is not the only layer.
+
+Decisions to confirm
+- All recursive CTEs are refused, not just unbounded ones (SPEC 5.1.3). Nothing in the golden set
+  needs one.
+- The function allowlist will refuse questions that need e.g. printf or json_extract until added.
+- The validator error messages are for the model's retry only (see notes under slices 4 and 6).
+
+Not committed: plan-askdb.txt (the /export file).

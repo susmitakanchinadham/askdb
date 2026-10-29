@@ -5,16 +5,18 @@
   - Config format (SPEC 4): `name`, `display_name`, `path` (`${CLOUDMETRICS_DB_PATH}`), `calendar.fiscal_year_start_month`, `description` (verbatim), `tables[]` with `columns[]` (`name`, `type`, `primary_key`, `references`, `description`). Loader renders `description` + `CREATE TABLE` DDL with comments as the model-facing text; version = hash of the file.
   - Verify: loader parses `data/cloudmetrics.yaml` and the rendered text matches a snapshot; `references` resolve to real columns; INSERT/DROP/ATTACH fail at engine level; schema-drift test (yaml column missing from a temp DB is removed from the model-facing text and reported); `GET /health`.
 
-- [ ] **Slice 2: SQL validator (AST only)**
+- [x] **Slice 2: SQL validator (AST only)**
   - Files: `src/askdb/validator.py`, `tests/unit/test_validator.py`
   - Verify: injection corpus (stacked statements, comments, CTE/subquery tricks, forbidden functions, disallowed column) is rejected; all golden `expected_sql` pass the validator.
 
 - [ ] **Slice 3: Executor, authorizer, limits and pagination**
+  - Note from slice 2: `validator.validate_sql(sql, allowed)` returns `ValidationResult` (`ok`, `code`, `message`, `sql`, `tables`, `columns`). Execute `result.sql` (regenerated from the checked tree, stars expanded, comments removed), never the original text. `allowed` is `{table: columns}` from `validator.allowed_from_layer(layer)`. The authorizer should allow exactly `result.tables` and `result.columns` as a cross-check.
   - Note from slice 1: `PRAGMA query_only` does not stop `ATTACH`, which creates a file on disk. `db.open_readonly` now sets `SQLITE_LIMIT_ATTACHED` to 0 (tested). The authorizer must still deny ATTACH/PRAGMA/functions itself; reuse `open_readonly` rather than opening connections elsewhere.
   - Files: `src/askdb/executor.py`, `src/askdb/authorizer.py`, `tests/integration/test_executor.py`, `tests/integration/test_authorizer.py`, `tests/unit/test_pagination.py`
   - Verify: authorizer denies disallowed tables/columns and non-SELECT actions; every golden `expected_sql` returns rows; runaway query is interrupted at the deadline; over-1,000-row result truncates and is flagged; page 2 is stable and disjoint from page 1; concurrency cap holds.
 
 - [ ] **Slice 4: Planner with fake LLM client, first end-to-end ask**
+  - Note from slice 2: on a rejection feed `result.code` and `result.message` back to the model for the single retry; they are written for the model and must never reach the user (they say SELECT, table, column). Only a small set of functions is allowed (see `_SAFE_TYPED` / `_SAFE_ANONYMOUS` in `validator.py`); `printf`, `hex`, `random`, `json_*`, recursive CTEs and bare `*` in non-COUNT places are refused, so tell the model the allowed list in the prompt.
   - Note from slice 1: use `config.render_model_text(layer)` as the prompt body and `main.load_checked_layer()` to get a layer already pruned against the live database (`layer.issues` lists what was dropped; `layer.version` is the glossary version for logs). The golden set loads from `config/validation/cloudmetrics.yaml`.
   - Prompt input is exactly the semantic layer's `description` plus the rendered table DDL (SPEC 4), the question and prior interpretations.
   - Files: `src/askdb/{planner,llm,prompts}.py`, `src/askdb/api/ask.py`, `tests/unit/test_planner.py`, `tests/validation/test_golden.py`, `tests/validation/recorded/`
@@ -25,6 +27,7 @@
   - Verify: wrong LLM sentence falls back to table-only; empty, NULL and divide-by-zero cases; copy-lint fails on any banned word across user-facing strings and API errors; golden cases produce sentences matching result cells.
 
 - [ ] **Slice 6: Roles, access control, audit log**
+  - Note from slice 2: pass the role-filtered `{table: columns}` as `allowed`. A hidden column is reported as `Code.UNKNOWN_COLUMN` and `SELECT *` silently expands to visible columns only, so the neutral role refusal must be chosen by the caller, not read from the validator message.
   - Blocked on SPEC open item 8: the database YAML has no roles or sensitivity fields, so decide where role allowlists live (separate roles file vs extending the YAML) before starting. The database YAML is not changed on assumption.
   - Files: role allowlist config (location per item 8), `src/askdb/{roles,audit}.py`, `tests/integration/test_access.py`, `tests/unit/test_audit.py`
   - Verify: per role, forbidden columns never appear in prompt, SQL or results; hidden-column question gets a neutral refusal; audit row written for answer, clarify, refuse and error with no result values.
