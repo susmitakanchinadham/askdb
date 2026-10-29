@@ -1,0 +1,349 @@
+ ▐▛███▛█   Claude Code v2.1.312
+▝▜██████▀  Sonnet 5.5 · Claude Pro
+ ▝▝   ▝▝   C:\claudelab\askdb
+
+  Sonnet 5.5 is here, and it's faster and excels at well-scoped tasks. Opus 5.5 is still your default. Switch with /model.
+
+❯ /clear                                                                        
+
+❯ /plan                                                                         
+  ⎿  Enabled plan mode
+
+❯ Read docs/SPEC.md. Propose an implementation plan as thin vertical slices.    
+  Create 7-8 slices that can be implemented one after another. Each slice is    
+  end-to-end, testable on its own, and enough to finish in one short session.   
+                                                                                
+  For each slice list: goal, files touched, how we verify it, and which earlier 
+  slice it depends on. Do not write any code.                                   
+                                                                                
+  The validation steps and database with the schema and validation set is given 
+  in data folder.                                                               
+
+● I'll start by reading the spec and the data folder.
+
+  Searched for 2 patterns, read 4 files, ran 1 shell command (ctrl+o to expand)
+
+● User answered Claude's questions:
+  ⎿  · SPEC 13.1 leaves the stack open. Which should slice 1 scaffold? → FastAPI
+     + React (Recommended)
+     · Which LLM should the planner call? (Tests will use a recorded/fake client
+     either way; this only affects the live adapter.) → Anthropic Claude API 
+     (Recommended)
+
+● Updated plan
+  ⎿  /plan to preview
+  ⎿  User rejected Claude's plan:
+     ╭─────────────────────────────────────────────────────────────────────────╮
+     │ AskDB implementation plan: 8 vertical slices                            │
+     │                                                                         │
+     │ Context                                                                 │
+     │                                                                         │
+     │ Nothing is built yet (repo holds only docs/ and data/). SPEC.md defines │
+     │ a read-only, role-aware, audited                                        │
+     │ "ask in English, get a sentence + table" app. data/ gives us the        │
+     │ CloudMetrics SQLite DB (200 customers,                                  │
+     │ 282 subscriptions, 1,831 invoices, 709 tickets), its semantic layer     │
+     │ (cloudmetrics.yaml) and a 30-case golden                                │
+     │ set (cloudmetrics_eval.yaml: totals_trend, ranking, filter, comparison, │
+     │ 1 follow-up, 2 clarification, 3 declined).                              │
+     │ Decisions: FastAPI + React (SPEC 13.1), Anthropic Claude API for the    │
+     │ planner. Each slice ends green on                                       │
+     │ uv run pytest and uv run ruff check . && uv run ruff format --check .,  │
+     │ and every slice updates docs/PLAN.md.                                   │
+     │                                                                         │
+     │ Gaps found in the data files (handled in the slices noted):             │
+     │ - Eval/yaml comments cite config/databases/sample.yaml,                 │
+     │   config/validation/sample.yaml and "SPEC 11.2"; none exist. Slice 1    │
+     │   copies the yaml files into config/ and the loader defines the format; │
+     │   fix the stale comments or SPEC refs.                                  │
+     │ - cloudmetrics.yaml has no roles, sensitivity tags, synonyms or example │
+     │   questions (SPEC 4, 6). Slice 5 adds them; the DB has no real PII      │
+     │   column except customers.company_name/account_owner, so pick which     │
+     │   columns a restricted role loses (needs admin sign-off per SPEC 6).    │
+     │ - Eval pass rule = same result set as expected_sql;                     │
+     │   clarification/declined cases check outcome only. Case today:          │
+     │   2026-10-21 is injected as the planner's clock.                        │
+     │                                                                         │
+     │ Slice 1: Scaffold, semantic layer loader, read-only connection          │
+     │                                                                         │
+     │ - Goal: runnable project that loads the CloudMetrics config and opens   │
+     │   the DB strictly read-only.                                            │
+     │ - Files: pyproject.toml, src/askdb/{__init__,main,config,db}.py,        │
+     │   config/databases/cloudmetrics.yaml,                                   │
+     │   config/validation/cloudmetrics_eval.yaml (copied from data/),         │
+     │   tests/unit/test_config.py, tests/integration/test_readonly.py,        │
+     │   docs/PLAN.md, update CLAUDE.md commands if needed.                    │
+     │ - Behaviour: GET /health; config loader renders the model-facing text   │
+     │   (description verbatim + tables as CREATE TABLE DDL with comments);    │
+     │   open_readonly() uses file:...?mode=ro + PRAGMA query_only=ON; startup │
+     │   check compares yaml tables/columns to the live schema and disables    │
+     │   broken entries (SPEC 4).                                              │
+     │ - Verify: tests prove INSERT/DROP/ATTACH fail at engine level;          │
+     │   schema-drift test with a temp DB missing a column; rendered DDL       │
+     │   snapshot test.                                                        │
+     │ - Depends on: none.                                                     │
+     │                                                                         │
+     │ Slice 2: SQL validator + authorizer                                     │
+     │                                                                         │
+     │ - Goal: the safety core. Accept exactly one SELECT; reject everything   │
+     │   else.                                                                 │
+     │ - Files: src/askdb/validator.py, src/askdb/authorizer.py,               │
+     │   tests/unit/test_validator.py, tests/integration/test_authorizer.py.   │
+     │ - Behaviour: AST-based (sqlglot, SQLite dialect): one statement, SELECT │
+     │   only, no PRAGMA/ATTACH/load_extension/readfile/writefile, no          │
+     │   unbounded recursive CTE, tables/columns within an allowlist parameter │
+     │   (all columns for now). SQLite authorizer callback denies all but      │
+     │   SELECT/READ on allowlisted columns. Returns structured error codes    │
+     │   for the retry-once loop.                                              │
+     │ - Verify: injection corpus (stacked statements, comments, CTE/subquery  │
+     │   tricks, forbidden functions, disallowed column); all 24 expected_sql  │
+     │   in the golden set must pass the validator (guards against             │
+     │   over-rejecting).                                                      │
+     │ - Depends on: 1.                                                        │
+     │                                                                         │
+     │ Slice 3: Executor with limits and pagination                            │
+     │                                                                         │
+     │ - Goal: run a validated SELECT safely and page through it.              │
+     │ - Files: src/askdb/executor.py, tests/integration/test_executor.py,     │
+     │   tests/unit/test_pagination.py.                                        │
+     │ - Behaviour: fresh connection per call, progress-handler deadline (~10  │
+     │   s, configurable), busy timeout, 1,000-row ceiling, page size 25 via   │
+     │   LIMIT/OFFSET with deterministic ORDER BY + unique tie-breaker, one    │
+     │   cached COUNT, "as of" timestamp, global concurrency cap + one query   │
+     │   per user. Business-worded error results (no "timeout", "SQL").        │
+     │ - Verify: runs every golden expected_sql and returns rows; a            │
+     │   cross-join/recursive query is interrupted at the deadline (short test │
+     │   deadline); >1,000-row query truncates and flags "more than 1,000";    │
+     │   page 2 is stable and disjoint from page 1; concurrency cap test.      │
+     │ - Depends on: 2.                                                        │
+     │                                                                         │
+     │ Slice 4: Planner (LLM) with a fake client, first end-to-end ask         │
+     │                                                                         │
+     │ - Goal: question in, table out, through POST /ask.                      │
+     │ - Files: src/askdb/planner.py, src/askdb/llm.py (interface + Anthropic  │
+     │   adapter + recorded/fake client), src/askdb/prompts.py,                │
+     │   src/askdb/api/ask.py, tests/unit/test_planner.py,                     │
+     │   tests/validation/test_golden.py, tests/validation/recorded/.          │
+     │ - Behaviour: prompt = semantic-layer text + question only (no rows);    │
+     │   structured output answer_plan | clarify | refuse; invalid SQL retried │
+     │   once with the validator error, then polite refusal; provider outage   │
+     │   gives a friendly message. Golden harness compares result sets for     │
+     │   data cases and checks outcome for clarification/declined cases. Model │
+     │   version pinned in config.                                             │
+     │ - Verify: unit tests with the fake client for plan, clarify, refuse,    │
+     │   retry-once, double failure, outage; a test asserting no result rows   │
+     │   ever reach the LLM client; uv run pytest tests/validation passes      │
+     │   offline on recorded outputs; separate opt-in marker runs live against │
+     │   Claude and reports the pass rate (target set with the user, no        │
+     │   threshold decided here).                                              │
+     │ - Depends on: 3.                                                        │
+     │                                                                         │
+     │ Slice 5: Roles, access control, audit log                               │
+     │                                                                         │
+     │ - Goal: role-aware answers and a full audit trail.                      │
+     │ - Files: extend config/databases/cloudmetrics.yaml (roles, sensitivity, │
+     │   allowlists), src/askdb/roles.py, src/askdb/audit.py (separate SQLite  │
+     │   audit DB), tests/integration/test_access.py,                          │
+     │   tests/unit/test_audit.py.                                             │
+     │ - Behaviour: role resolved from a stub auth dependency (SSO later);     │
+     │   prompt built from the role-filtered glossary; allowlist passed to     │
+     │   validator and authorizer; neutral refusal "That information isn't     │
+     │   available to your role"; audit row per request (user, role, time,     │
+     │   question, outcome, plan, SQL, glossary version, row count, duration,  │
+     │   validator result; no result values). Glossary misses logged.          │
+     │ - Verify: for each role, forbidden columns never appear in prompt, SQL  │
+     │   or results (prompt-capture test); a question needing a hidden column  │
+     │   is refused without leaking its existence; audit row written for       │
+     │   answer, clarify, refuse and error; no cell values in audit.           │
+     │ - Depends on: 4.                                                        │
+     │                                                                         │
+     │ Slice 6: Answer composer and wording lint                               │
+     │                                                                         │
+     │ - Goal: short sentence with trustworthy numbers, interpretation line,   │
+     │   business-only language.                                               │
+     │ - Files: src/askdb/composer.py, src/askdb/number_check.py,              │
+     │   src/askdb/strings.py (all user-facing text),                          │
+     │   tests/unit/test_composer.py, tests/unit/test_copy_lint.py.            │
+     │ - Behaviour: sentence templates filled from result cells, LLM picks     │
+     │   phrasing only; validator checks every number/date/name against cells  │
+     │   (formatting/rounding per unit), mismatch falls back to table + "Here  │
+     │   are the figures"; empty result and NULL ("Not recorded"), division by │
+     │   zero ("Not applicable"); interpretation line derived from the plan;   │
+     │   "as of" and row count in the card payload.                            │
+     │ - Verify: unit tests for each rule including a deliberately wrong LLM   │
+     │   sentence; copy-lint test fails on any banned word (SQL, query, table, │
+     │   column, timeout, schema) across strings.py and API error payloads;    │
+     │   golden cases render a sentence whose numbers match the cells.         │
+     │ - Depends on: 4 (uses 3's results; independent of 5 but ordered after   │
+     │   for a stable card payload).                                           │
+     │                                                                         │
+     │ Slice 7: Conversation, clarifications, "This looks wrong"               │
+     │                                                                         │
+     │ - Goal: multi-turn behaviour and the feedback loop.                     │
+     │ - Files: src/askdb/session.py, src/askdb/feedback.py, extend            │
+     │   planner/prompts and api/, tests/integration/test_followup.py,         │
+     │   tests/unit/test_session.py.                                           │
+     │ - Behaviour: session stores prior interpretations (structured plan,     │
+     │   never rows), 30-minute expiry, "New question" reset, context cannot   │
+     │   widen role permissions, glossary version pinned per question; clarify │
+     │   responses with 2-4 choices (period, measure); chip change re-runs     │
+     │   with an altered plan through the same validator; POST /feedback       │
+     │   records full context and flags the admin, no glossary change;         │
+     │   per-user rate limit.                                                  │
+     │ - Verify: golden follow-up case mrr_by_plan_followup_industry passes;   │
+     │   golden clarification cases (revenue_ambiguous_mrr_or_invoices,        │
+     │   recent_churn_relative) return clarify not an answer; follow-up under  │
+     │   a restricted role cannot reach hidden columns; session expiry and     │
+     │   reset tests; feedback row contains question, plan, SQL, version, row  │
+     │   count.                                                                │
+     │ - Depends on: 5 and 6.                                                  │
+     │                                                                         │
+     │ Slice 8: React web UI                                                   │
+     │                                                                         │
+     │ - Goal: the chat-style product people actually use.                     │
+     │ - Files: web/ (Vite + React + TS),                                      │
+     │   web/src/{App,Chat,AnswerCard,ResultTable,Chips,Clarify}.tsx, API      │
+     │   client, web/tests/, tests/e2e smoke, README run notes.                │
+     │ - Behaviour: thread, role-specific example questions, answer card       │
+     │   (sentence, interpretation chips, paged table with business column     │
+     │   names and formatted values, "as of" + row count, "This looks wrong"), │
+     │   loading text "Looking that up…" with cancel, clarification buttons,   │
+     │   refusal/error messages, keyboard operable, aria labels, AA contrast.  │
+     │ - Verify: component tests (Vitest/RTL) for card, pagination, chips      │
+     │   re-run, clarify choices; axe accessibility check; manual run with the │
+     │   fake LLM client against data/cloudmetrics.db through 3 golden         │
+     │   questions plus one refusal; UI copy goes through the lint from        │
+     │   slice 6.                                                              │
+     │ - Depends on: 7.                                                        │
+     │                                                                         │
+     │ Cross-cutting rules for every slice                                     │
+     │                                                                         │
+     │ - Bug fixes start with a failing test; no path that writes; no          │
+     │   generated SQL, rows or secrets in user-facing output; never read      │
+     │   .env.                                                                 │
+     │ - Open items still needing an answer, not settled here: SPEC 13.2       │
+     │   golden-set ownership/size (only 30 cases exist), 13.4 EXPLAIN cost    │
+     │   pre-check (omitted), 13.6 log retention (default 1 year in config,    │
+     │   flagged), 13.7 provider approval (needed before the live adapter      │
+     │   touches real data).                                                   │
+     │                                                                         │
+     │ Verification of the whole plan                                          │
+     │                                                                         │
+     │ After slice 8: uv sync && uv run pytest && uv run ruff check . && uv    │
+     │ run ruff format --check ., then launch the API with                     │
+     │ CLOUDMETRICS_DB_PATH=./data/cloudmetrics.db, open the UI, and ask the   │
+     │ 30 golden questions' representative samples as two different roles.     │
+     ╰─────────────────────────────────────────────────────────────────────────╯
+
+✻ Churned for 1m 5s · done 10:38 PM
+
+❯ Write the agreed plan to docs/PLAN.md as a checklist: one checkbox per slice, 
+  with its files and its verification method under it. Nothing else.            
+
+● Write(docs\PLAN.md)
+  ⎿  Wrote 33 lines to docs\PLAN.md
+      1 # PLAN
+      2 
+      3 - [ ] **Slice 1: Scaffold, semantic layer loader, read-only conne
+        ction**
+      4   - Files: `pyproject.toml`, `src/askdb/{__init__,main,config,db}
+        .py`, `config/databases/cloudmetrics.yaml`, `config/validation/cl
+        oudmetrics_eval.yaml`, `tests/unit/test_config.py`, `tests/integr
+        ation/test_readonly.py`, `docs/PLAN.md`
+      5   - Verify: INSERT/DROP/ATTACH fail at engine level; schema-drift
+         test with a temp DB missing a column; rendered DDL snapshot test
+     … +29 lines (~3 KB) (ctrl+o to expand)
+
+● I wrote docs/PLAN.md as a checklist with one checkbox per slice. Under each
+  slice are its files and how we verify it. I didn't run anything.
+
+  Plan mode was still on when you asked for this. I treated your request as
+  permission to write that one file, and nothing else changed. I left out the
+  dependency order, since you asked for files and verification only.
+
+✻ Churned for 17s · done 10:39 PM
+
+❯ The implementation of database schema should as per the yaml file given in    
+  datafolder (cloudmetrics.yaml). Make required changes to the SPEC.md file and 
+  PLAN.md file as required to follow this format.                               
+
+● Update(docs\SPEC.md)
+  ⎿  Added 1 line, removed 1 line
+      36  Components:
+      37  1. **Web UI** (React): chat thread, example questions, answer c
+          ards.
+      38  2. **API service**: auth, session/conversation state, orchestra
+          tion. Python (FastAPI) assumed; Next.js is acceptable if the te
+          am prefers TypeScript. Choose one before build.
+      39 -3. **Semantic layer**: versioned config (YAML/JSON in repo, edi
+         -ted by the admin) defining tables, columns, business names, syn
+         -onyms, metric definitions, defaults, sensitivity, role allowlis
+         -ts.                                                            
+      39 +3. **Semantic layer**: one YAML file per database in `config/da
+         +tabases/` (format in section 4, reference: `data/cloudmetrics.y
+         +aml`), edited by the admin. It holds the connection, calendar, 
+         +a free-text description with the business rules, and the table/
+         +column definitions.                                            
+      40  4. **Query planner (LLM)**: turns question + glossary + session
+           context into a structured query plan and SQL.
+      41  5. **Validator/executor**: validates SQL, runs it against the S
+          QLite file with limits.
+      42  6. **Answer composer**: builds the sentence from a template wit
+          h numbers from result cells; the LLM only chooses phrasing (no 
+          numbers).
+
+  Read 1 file (ctrl+o to expand)
+
+● Now I'll rewrite section 4 and the other spots that assumed a richer glossary
+  format.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● SPEC.md and PLAN.md now follow the cloudmetrics.yaml format. I didn't run any
+  code or tests, and I didn't re-read either file after the edits.
+
+  SPEC.md
+  - Section 4 (Semantic layer): Rewritten to match the YAML:
+    - It shows the layout: name, display_name, path,
+      calendar.fiscal_year_start_month, a free-text description, and tables with
+      their columns.
+    - Business rules live only in description.
+    - The model sees only description plus the tables rendered as DDL.
+    - The glossary version is a hash of the file.
+    - The load-time schema check drops broken columns from what the model sees
+      and reports them.
+  - Fields the YAML doesn't have: The old spec assumed synonyms, sensitivity
+    tags, per-entry roles, requires_time_filter and a company timezone. Section
+    4 now says these aren't in the file.
+  - Other sections:
+    - Section 3 (components) and the request flow in the same section.
+    - The decisions table.
+    - 5.4 (defaults).
+    - Section 12 (edge cases).
+    - Section 13, item 4 (the requires_time_filter note).
+    - Section 13, item 1 (the date-format note).
+  - Golden set: Section 11 now describes the eval file format, including
+    expected_sql, expected_outcome, conversation and today. The old
+    data/cloudmetrics_eval.yaml header cited a "SPEC 11.2" that didn't exist.
+  - Open item 8 (new): The YAML has no roles, so I did not decide where per-role
+    allowlists live. That choice needs your answer, and I added it as open
+    item 8.
+
+  PLAN.md
+  - Slice 1: Copies the YAML unchanged into config/. It also spells out the
+    config format and adds checks that the loader parses the file, that the
+    rendered text matches a snapshot, and that every references entry points to
+    a real column.
+  - Slice 4: The prompt input is exactly description plus the table DDL, the
+    question and prior interpretations.
+  - Slice 5: Marked as blocked on open item 8, and it no longer edits the
+    database YAML to add roles.
+
+  The system noted PLAN.md changed on disk since I last read it. What it showed
+  matches my edits through slice 7's file list, so I treated that as the current
+  state.
+
+  Question for you: where should role allowlists live: a separate roles file, or
+  extra fields in the database YAML?
+
+✻ Baked for 57s · done 10:47 PM
