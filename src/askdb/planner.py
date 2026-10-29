@@ -22,10 +22,20 @@ MAX_OPTIONS = 4
 MIN_OPTIONS = 2
 
 
+CHIP_KINDS = ("period", "measure", "grouping")
+
+
+@dataclass(frozen=True)
+class Chip:
+    kind: str  # one of CHIP_KINDS
+    options: tuple[str, ...]
+
+
 @dataclass(frozen=True)
 class Answer:
     interpretation: str
     validated: ValidationResult  # `.sql` is internal; never put it in a response
+    chips: tuple[Chip, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -67,6 +77,21 @@ def _parse(text: str) -> dict:
     if not isinstance(data, dict) or "type" not in data:
         raise _BadReply("bad_reply", "The reply must be a JSON object with a 'type' field.")
     return data
+
+
+def _chips(raw: object) -> tuple[Chip, ...]:
+    """Optional change-chips from the model; anything malformed is dropped, never retried."""
+    out: dict[str, Chip] = {}
+    for item in raw if isinstance(raw, list) else []:
+        if not isinstance(item, dict) or item.get("kind") not in CHIP_KINDS:
+            continue
+        options = item.get("options")
+        if not isinstance(options, list):
+            continue
+        kept = tuple(dict.fromkeys(o.strip() for o in options if isinstance(o, str) and o.strip()))
+        if len(kept) >= MIN_OPTIONS and item["kind"] not in out:
+            out[item["kind"]] = Chip(item["kind"], kept[:MAX_OPTIONS])
+    return tuple(out.values())
 
 
 class Planner:
@@ -139,5 +164,5 @@ class Planner:
             result = validate_sql(sql, self.allowed)
             if not result.ok:
                 raise _BadReply(str(result.code), result.message, sql)
-            return Answer(interpretation, result)
+            return Answer(interpretation, result, _chips(data.get("chips")))
         raise _BadReply("bad_reply", "'type' must be answer_plan, clarify or refuse.")

@@ -12,6 +12,7 @@ from askdb.config import load_semantic_layer
 from askdb.llm import FakeLLMClient, LLMUnavailable
 from askdb.main import create_app
 from askdb.roles import hidden_terms, load_roles
+from askdb.session import UserLimiter
 
 ROOT = Path(__file__).resolve().parents[2]
 LAYER = load_semantic_layer(ROOT / "config/databases/cloudmetrics.yaml")
@@ -138,6 +139,7 @@ def test_results_never_contain_a_hidden_value(start, db_path):
     owners = {r[0] for r in conn.execute("SELECT DISTINCT account_owner FROM customers")}
     conn.close()
     client = start(FakeLLMClient([plan("SELECT * FROM customers")] * 40))
+    client.app.state.limiter = UserLimiter(per_minute=1000)
     for page in range(1, 41):
         body = ask(client, "analyst", page=page).json()
         cells = {c for row in body["rows"] for c in row}

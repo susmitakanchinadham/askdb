@@ -21,10 +21,17 @@ MESSAGES = {
     "busy": "Lots of people are asking questions right now. Please try again shortly.",
     "not_permitted": "That information isn't available to your role.",
     "no_access": "You don't have access yet. Please sign in or contact your admin.",
+    "rate_limited": "You're asking questions quickly. Please wait a moment and try again.",
+    "already_running": "Please wait for your current question to finish first.",
+    "no_chip": "That change isn't available for this answer. Try asking in your own words.",
+    "no_answer": "There is no answer to report on yet. Ask a question first.",
     "invalid": "Please type a question.",
     "unexpected": "Something went wrong on our side. Please try again shortly.",
 }
 
+SESSION_ENDED = "Your earlier conversation has ended, so I'm starting fresh."
+FEEDBACK_THANKS = "Thanks, we've recorded that so it can be checked."
+NEW_QUESTION = "Ready for a new question."
 NOT_RECORDED = "Not recorded"
 NO_RECORDS = "No matching records found."
 BROADEN = "Try a wider period or fewer filters."
@@ -35,6 +42,9 @@ FOUND_FOR = "Found {total} results for {interpretation}"
 
 ALL_STRINGS: tuple[str, ...] = (
     *MESSAGES.values(),
+    SESSION_ENDED,
+    FEEDBACK_THANKS,
+    NEW_QUESTION,
     NOT_RECORDED,
     NO_RECORDS,
     BROADEN,

@@ -16,9 +16,11 @@ from askdb.audit import AuditLog
 from askdb.config import SemanticLayer, check_against_database, load_semantic_layer
 from askdb.db import open_readonly
 from askdb.executor import Executor
+from askdb.feedback import FeedbackLog
 from askdb.llm import AnthropicClient, LLMClient
 from askdb.planner import Planner
 from askdb.roles import hidden_terms, layer_for_role, load_roles
+from askdb.session import RATE_PER_MINUTE, SessionStore, UserLimiter
 from askdb.validator import allowed_from_layer
 
 DEFAULT_CONFIG = Path("config/databases/cloudmetrics.yaml")
@@ -63,6 +65,11 @@ def create_app(
             for name, role in book.roles.items()
         }
         app.state.audit = AuditLog(audit_file)
+        app.state.feedback = FeedbackLog(audit_file)
+        app.state.sessions = SessionStore()
+        app.state.limiter = UserLimiter(
+            int(os.environ.get("ASKDB_RATE_PER_MINUTE", RATE_PER_MINUTE))
+        )
         app.state.executor = Executor(layer.resolve_db_path())
         yield
 

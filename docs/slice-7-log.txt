@@ -1,0 +1,33 @@
+Slice 7: Follow-ups, chip re-run, "This looks wrong", rate limit
+
+Added
+- src/askdb/session.py: SessionStore (30-minute inactivity expiry, bounded size, bound to one user
+  and role so another identity gets a fresh empty session and a notice), reset for "New question",
+  UserLimiter (20 requests a minute per user, one running question per user, a blocked request does
+  not use up the allowance).
+- src/askdb/feedback.py: FeedbackLog (same service-owned SQLite file as the audit log): question,
+  plan, SQL, glossary version, row count, user, role, optional note (500 chars). No result values.
+- planner.py / prompts.py: answer_plan may carry up to three "chips" (period, measure, grouping,
+  2 to 4 options each); malformed chips are dropped without a retry. The prompt explains follow-ups.
+- api/ask.py: session_id in and out, "notice" when a session ended, chips in answers,
+  POST /ask/chip (only an offered kind and option is accepted; it becomes a follow-up question
+  that goes through the same planner, checker and executor), POST /feedback, POST /session/reset,
+  HTTP 429 with polite messages for the two limits (audited). strings.py gained the new wording
+  (covered by the copy-lint).
+- Tests: tests/unit/test_session.py, tests/integration/test_followup.py; the golden follow-up
+  mrr_by_plan_followup_industry now replays offline (tests/validation/test_golden.py plus a
+  two-reply recording).
+
+Verified
+- 453 tests pass offline; ruff check and format clean.
+- Follow-up golden case passes and its prompt carries the earlier reading and no result values;
+  a restricted role's follow-up for a hidden column is refused with one model call; another user's
+  or role's session id brings no context; session expiry at 30 minutes and reset clear the context;
+  a chip change is audited, goes through the checker (bad statement declined) and unoffered chips are
+  rejected before any model call; feedback rows hold the required fields; rate limit and the
+  one-at-a-time rule (real second thread) hold.
+
+Not verified / limits
+- Live model behaviour for follow-ups and chips (no key; recordings are seeded from the golden set).
+- Sessions and limits are in memory: one server process, lost on restart.
+- Paging beyond page 1 plans the question again (noted for slice 8).

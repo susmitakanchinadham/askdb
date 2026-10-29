@@ -1,0 +1,10 @@
+{
+  "id": "mrr_by_plan_followup_industry",
+  "question": "And split that by industry?",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"answer_plan\", \"interpretation\": \"Answer to: Break down MRR by plan.\", \"sql\": \"SELECT p.plan_name, COUNT(*) AS active_subscriptions, SUM(s.mrr) AS total_mrr\\nFROM subscriptions s\\nJOIN plans p ON p.plan_id = s.plan_id\\nWHERE s.status = 'active'\\nGROUP BY p.plan_id, p.plan_name\\nORDER BY total_mrr DESC\"}",
+    "{\"type\": \"answer_plan\", \"interpretation\": \"Answer to: And split that by industry?\", \"sql\": \"SELECT p.plan_name, c.industry, SUM(s.mrr) AS total_mrr\\nFROM subscriptions s\\nJOIN plans p ON p.plan_id = s.plan_id\\nJOIN customers c ON c.customer_id = s.customer_id\\nWHERE s.status = 'active'\\nGROUP BY p.plan_id, p.plan_name, c.industry\"}"
+  ]
+}

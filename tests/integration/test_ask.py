@@ -57,11 +57,9 @@ def test_clarify_and_decline_and_outage(make_client):
     clarify = make_client(
         FakeLLMClient([reply(type="clarify", question="Which period?", options=["2024", "2025"])])
     )
-    assert clarify.post("/ask", json={"question": "Revenue?"}).json() == {
-        "status": "clarify",
-        "question": "Which period?",
-        "options": ["2024", "2025"],
-    }
+    body = clarify.post("/ask", json={"question": "Revenue?"}).json()
+    assert body.pop("session_id")
+    assert body == {"status": "clarify", "question": "Which period?", "options": ["2024", "2025"]}
 
     declined = make_client(FakeLLMClient([reply(type="refuse", reason="data_change")]))
     body = declined.post("/ask", json={"question": "Mark invoices paid"}).json()
@@ -73,6 +71,7 @@ def test_clarify_and_decline_and_outage(make_client):
             raise LLMUnavailable("down")
 
     body = make_client(Down()).post("/ask", json={"question": "MRR?"}).json()
+    body.pop("session_id")
     assert body == {
         "status": "unavailable",
         "message": "I can't answer right now, please try again shortly.",

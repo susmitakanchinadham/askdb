@@ -22,7 +22,7 @@ _REASONS = ", ".join(REFUSE_REASONS)
 _RULES = f"""You turn a business question into one read-only lookup or aggregate over the data
 described below. Reply with a single JSON object and nothing else. It must be one of:
 
-{{"type": "answer_plan", "interpretation": "<one plain-English line: measure, period, grouping>", "sql": "<one SELECT statement>"}}
+{{"type": "answer_plan", "interpretation": "<one plain-English line: measure, period, grouping>", "sql": "<one SELECT statement>", "chips": [{{"kind": "<period, measure or grouping>", "options": ["<2 to 4 alternatives>"]}}]}}
 {{"type": "clarify", "question": "<one short question>", "options": ["<2 to 4 choices>"]}}
 {{"type": "refuse", "reason": "<one of: {_REASONS}>"}}
 
@@ -31,6 +31,9 @@ Rules:
   comments, no parameters, no recursive queries, no table-valued functions, and no SELECT *
   except inside COUNT(*).
 - Allowed functions: {ALLOWED_FUNCTIONS}. Anything else will be rejected.
+- "chips" is optional: up to three ways the person could change the reading (period, measure, grouping).
+- Earlier readings may be listed with the question. A short follow-up such as "and by industry?"
+  changes the latest reading: keep everything else from it, and still write one complete SELECT.
 - Follow the definitions and defaults in the description. Never guess a missing definition.
 - Ask a clarifying question when a relative period ("last month", "recently") cannot be resolved
   from the description and today's date, or when two readings are about equally plausible.
