@@ -1,7 +1,19 @@
 {
-  "permissions": {
-    "allow": ["Edit", "Bash(pytest *)", "Bash(git add *)", "Bash(git commit *)"],
-    "ask": ["Bash(git push *)"],
-    "deny": ["Read(./.env)"]
-  }
+"permissions": {
+"allow": ["Edit", "Bash(pytest *)", "Bash(uv run pytest *)", "Bash(uv run ruff*)", "Bash(git add *)", "Bash(git commit *)"],
+"ask": ["Bash(git push *)"],
+"deny": ["Read(./.env)"]
+},
+"hooks": {
+"Stop": [
+{
+"hooks": [
+{
+"type": "command",
+"command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/plan-status.sh"
+}
+]
+}
+]
+}
 }
