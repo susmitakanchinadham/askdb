@@ -38,6 +38,16 @@ def load_checked_layer(config_path: Path, env: dict[str, str] | None = None) -> 
         conn.close()
 
 
+def _default_client() -> LLMClient:
+    if os.environ.get("ASKDB_LLM") == "replay":  # development only, see dev_llm.py
+        from askdb.dev_llm import ReplayLLMClient
+
+        return ReplayLLMClient(
+            Path("config/validation/cloudmetrics.yaml"), Path("tests/validation/recorded")
+        )
+    return AnthropicClient()
+
+
 def create_app(
     config_path: Path | None = None,
     llm: LLMClient | None = None,
@@ -53,7 +63,7 @@ def create_app(
         layer = load_checked_layer(path)
         app.state.layer = layer
         # Without an API key the client reports an outage, so /ask degrades to a friendly message.
-        client = llm or AnthropicClient()
+        client = llm or _default_client()
         book = load_roles(roles_file, layer)
         app.state.planners = {
             name: Planner(

@@ -88,11 +88,12 @@ def _default_sentence(interp: str | None, labels: list[str], cells: list[Cell], 
         lead = f"{strings.NO_RECORDS} {interp}." if interp else strings.NO_RECORDS
         return f"{lead} {strings.BROADEN}"
     if page.total == 1:
-        pairs = [f"{label} {cell.text}" for label, cell in zip(labels, cells, strict=True)]
-        if len(pairs) == 1:
-            body = f"{labels[0]}: {cells[0].text}"
+        if len(cells) == 1:
+            body = cells[0].text if interp else f"{labels[0]}: {cells[0].text}"
         else:
-            body = "; ".join(pairs)
+            body = "; ".join(
+                f"{label} {cell.text}" for label, cell in zip(labels, cells, strict=True)
+            )
         return f"{interp}: {body}." if interp else f"{body}."
     count = f"{page.total:,}"
     if page.truncated:
@@ -105,6 +106,10 @@ def _default_sentence(interp: str | None, labels: list[str], cells: list[Cell], 
 def compose(interpretation: str | None, page: Page, phraser: Phraser | None = None) -> Composed:
     if interpretation is not None and not strings.is_clean(interpretation):
         interpretation = None
+    if interpretation:
+        interpretation = (
+            interpretation.strip().rstrip(". ") or None
+        )  # the sentence adds its own stop
     labels = [display_name(c) for c in page.columns]
     grid = [
         [format_cell(col, v) for col, v in zip(page.columns, row, strict=True)] for row in page.rows

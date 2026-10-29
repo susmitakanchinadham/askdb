@@ -17,6 +17,7 @@ checked with `strings.is_clean` before it leaves the server.
 from __future__ import annotations
 
 import time
+from dataclasses import replace
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -47,6 +48,11 @@ class ChipRequest(BaseModel):
     session_id: str = Field(max_length=100)
     kind: str = Field(max_length=20)
     value: str = Field(min_length=1, max_length=200)
+
+
+class PageRequest(BaseModel):
+    session_id: str = Field(max_length=100)
+    page: int = Field(ge=1)
 
 
 class SessionRequest(BaseModel):
@@ -81,6 +87,12 @@ def ask(body: AskRequest, request: Request):
 @router.post("/ask/chip")
 def change_chip(body: ChipRequest, request: Request):
     return _handle(request, None, 1, body.session_id, chip=(body.kind, body.value.strip()))
+
+
+@router.post("/ask/page")
+def another_page(body: PageRequest, request: Request):
+    """Page through the last answer without planning the question again."""
+    return _handle(request, None, body.page, body.session_id, page_only=True)
 
 
 @router.post("/session/reset")
@@ -127,7 +139,9 @@ def _chip_question(session: Session, kind: str, value: str) -> str | None:
     return f"Same as before, but change the {kind} to: {value}"
 
 
-def _handle(request: Request, question: str | None, page: int, session_id, chip=None):
+def _handle(
+    request: Request, question: str | None, page: int, session_id, chip=None, page_only=False
+):
     started = time.monotonic()
     state = request.app.state
     user, role = _who(request)
@@ -158,9 +172,18 @@ def _handle(request: Request, question: str | None, page: int, session_id, chip=
             body = {"status": "error", "message": MESSAGES["no_chip"], "session_id": session.id}
             return finish(body, {"outcome": "error", "reason": "bad_chip"}, 400, f"chip {chip[0]}")
 
+    if page_only:
+        if session.last is None or session.last.validated is None:
+            body = {"status": "error", "message": MESSAGES["no_answer"], "session_id": session.id}
+            return finish(body, {"outcome": "error", "reason": "no_answer"}, 409, "page")
+        question = f"{session.last.question} (page {page})"
+
     try:
         with state.limiter.request(user):
-            payload, record = _answer(state, planner, session, question, page)
+            if page_only:
+                payload, record = _present(state, session, session.last, page)
+            else:
+                payload, record = _answer(state, planner, session, question, page)
         status_code = 200
     except RateLimited:
         payload = {"status": "error", "message": MESSAGES["rate_limited"]}
@@ -205,9 +228,22 @@ def _answer(state, planner, session: Session, question: str, page_number: int):
         body = {"status": "clarify", "question": outcome.question, "options": list(outcome.options)}
         return body, {"outcome": "clarify", "plan": outcome.question}
 
-    sql = outcome.validated.sql
+    interpretation = outcome.interpretation if strings.is_clean(outcome.interpretation) else None
+    chips = tuple(
+        c for c in outcome.chips if all(strings.is_clean(o) for o in (c.kind, *c.options))
+    )
+    last = LastAnswer(question, interpretation, outcome.validated.sql, 0, chips, outcome.validated)
+    body, record = _present(state, session, last, page_number)
+    if body["status"] == "answer":
+        state.sessions.remember(session, interpretation or f"Question: {question}", None)
+    return body, record
+
+
+def _present(state, session: Session, last: LastAnswer, page_number: int):
+    """Run the checked statement for one page and describe the result."""
+    sql = last.sql
     try:
-        page = state.executor.execute(outcome.validated, page=page_number)
+        page = state.executor.execute(last.validated, page=page_number)
     except (QueryTimeout, TooBusy, ExecutionError) as exc:
         key, reason = {
             QueryTimeout: ("slow", "slow_search"),
@@ -216,20 +252,14 @@ def _answer(state, planner, session: Session, question: str, page_number: int):
         record = {"outcome": "error", "reason": reason, "sql": sql, "validator_result": "ok"}
         return {"status": "error", "message": MESSAGES[key]}, record
 
-    interpretation = outcome.interpretation if strings.is_clean(outcome.interpretation) else None
-    chips = tuple(
-        c for c in outcome.chips if all(strings.is_clean(o) for o in (c.kind, *c.options))
-    )
-    state.sessions.remember(
-        session,
-        interpretation or f"Question: {question}",
-        LastAnswer(question, interpretation, sql, page.total, chips),
-    )
+    if session.last is not last or session.last.row_count != page.total:
+        session.last = replace(last, row_count=page.total)
+    interpretation = last.interpretation
     composed = compose(interpretation, page)
     body = {
         "status": "answer",
         "interpretation": interpretation,
-        "chips": [{"kind": c.kind, "options": list(c.options)} for c in chips],
+        "chips": [{"kind": c.kind, "options": list(c.options)} for c in last.chips],
         "sentence": composed.sentence,
         "note": composed.note,
         "columns": composed.display_columns,

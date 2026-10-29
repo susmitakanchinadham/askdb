@@ -343,3 +343,60 @@ def test_one_question_at_a_time_per_user(start):
     assert second.json()["message"] == strings.MESSAGES["already_running"]
     assert first["r"].status_code == 200
     assert ask(client, "after").status_code == 200  # free again
+
+
+# ------------------------------------------------------------------ paging
+
+ALL_INVOICES = "SELECT invoice_id FROM invoices ORDER BY invoice_id"
+
+
+def test_paging_reruns_the_checked_statement_without_calling_the_model(start):
+    llm = FakeLLMClient([plan(ALL_INVOICES, "All invoices")])
+    client = start(llm)
+    first = ask(client, "List invoices").json()
+    assert first["page"] == 1 and first["total"] == 1000 and first["truncated"]
+    second = client.post(
+        "/ask/page", json={"session_id": first["session_id"], "page": 2}, headers=hdr()
+    ).json()
+    assert second["status"] == "answer" and second["page"] == 2
+    assert second["rows"][0] == ["26"] and second["interpretation"] == "All invoices"
+    assert second["session_id"] == first["session_id"]
+    assert len(llm.calls) == 1
+    rows = client.app.state.audit.rows()
+    assert [r["outcome"] for r in rows] == ["answer", "answer"]
+    assert rows[1]["question"] == "List invoices (page 2)" and rows[1]["row_count"] == 1000
+
+
+def test_paging_keeps_feedback_pointing_at_the_answer(start):
+    client = start(FakeLLMClient([plan(ALL_INVOICES, "All invoices")]))
+    first = ask(client, "List invoices").json()
+    client.post("/ask/page", json={"session_id": first["session_id"], "page": 3}, headers=hdr())
+    client.post("/feedback", json={"session_id": first["session_id"]}, headers=hdr())
+    (row,) = client.app.state.feedback.rows()
+    assert (row["question"], row["row_count"]) == ("List invoices", 1000)
+
+
+def test_paging_without_an_answer_is_a_clean_conflict(start):
+    client = start(FakeLLMClient([]))
+    resp = client.post("/ask/page", json={"session_id": "none", "page": 2}, headers=hdr())
+    assert resp.status_code == 409
+    assert resp.json()["message"] == strings.MESSAGES["no_answer"]
+
+
+def test_paging_needs_the_same_identity(start):
+    client = start(FakeLLMClient([plan(ALL_INVOICES)]))
+    first = ask(client, user="alice").json()
+    resp = client.post(
+        "/ask/page", json={"session_id": first["session_id"], "page": 2}, headers=hdr(user="bob")
+    )
+    assert resp.status_code == 409
+    assert client.post("/ask/page", json={"session_id": "x", "page": 2}).status_code == 403
+
+
+def test_a_page_past_the_ceiling_is_empty(start):
+    client = start(FakeLLMClient([plan(ALL_INVOICES)]))
+    first = ask(client).json()
+    far = client.post(
+        "/ask/page", json={"session_id": first["session_id"], "page": 99}, headers=hdr()
+    ).json()
+    assert far["status"] == "answer" and far["rows"] == []

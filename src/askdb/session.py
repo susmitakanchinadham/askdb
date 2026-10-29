@@ -30,6 +30,7 @@ class LastAnswer:
     sql: str  # for the feedback row; never sent to the user
     row_count: int
     chips: tuple = ()  # planner.Chip values offered with the answer
+    validated: object | None = None  # the checked statement, so paging does not plan again
 
 
 @dataclass

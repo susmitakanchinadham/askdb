@@ -1,0 +1,48 @@
+Slice 8: React web UI
+
+Decisions (asked of the user): Vite + React + TypeScript in web/ (SPEC 13.1 settled for the
+frontend, Next.js not used; CLAUDE.md and SPEC updated); npm install from the public registry
+allowed (package.json and package-lock.json committed, node_modules and dist are git-ignored).
+
+Added (frontend, web/)
+- src/api.ts: typed client for /ask, /ask/chip, /ask/page, /feedback, /session/reset under /api;
+  a network failure or unreadable reply becomes a friendly message; Cancel aborts the request.
+- src/strings.ts: every fixed UI string in business wording.
+- Components: App (session, thread, cancel, New question), Chat (thread, examples, ask box,
+  loading text with Cancel), AnswerCard (sentence or the "Here are the figures." note, reading of
+  the question, chips, table, "As of" time and result count, "This looks wrong" form),
+  ResultTable (business headings, 25-row pages, Previous/Next, "Showing 26-50 of 1,000"),
+  Chips (labelled groups; a change re-runs through /ask/chip), Clarify (2-4 choices plus free text).
+  Only the newest answer accepts chip, page and report actions; older cards are read-only.
+- vite.config.ts: dev proxy /api -> FastAPI that injects X-Askdb-User/-Role (dev only; in
+  production the SSO proxy sets them).
+- Tests (Vitest, Testing Library, jest-axe): components, app flows (loading, cancel, refusal,
+  outage, session notice, clarify, chip, paging, feedback, new question), axe on five states
+  (plus a check that axe really flags a missing label and image text), wording lint on the
+  strings and on the rendered screen.
+
+Added (backend, needed by the UI)
+- POST /ask/page re-runs the session's last checked statement, so paging no longer plans the
+  question again (the caveat noted in slice 7). LastAnswer keeps the checked statement in memory.
+- src/askdb/dev_llm.py + ASKDB_LLM=replay: answers only the golden questions from the recorded
+  replies and declines everything else, so the app can run end to end without an API key. Dev only.
+- tests/e2e/test_smoke.py: full flow with the replay model through the real app, plus a contract
+  check between web/src/api.ts and the served routes and answer fields.
+- Composer polish found in the manual run: a single value reads "<reading>: $22,344.11." instead of
+  repeating the label, and a reading that ends in a full stop no longer doubles it.
+
+Verified
+- 471 backend tests and 42 web tests pass; ruff and tsc clean; npm run build succeeds.
+- Manual run (real backend on data/cloudmetrics.db with the replay model, Vite dev server in
+  front, driven with curl through the /api proxy): "What is our current total MRR?" ($22,344.11),
+  "Show monthly revenue for 2025." (11 months), "Which five industries have the most customers?"
+  (Technology 66, Finance 37, Retail 31, Healthcare 30, Education 21), a follow-up in the same
+  session, the refusal "Mark all overdue invoices as paid.", feedback, paging, New question, and a
+  403 with the sign-in message when the API is hit directly without identity.
+
+NOT verified
+- No real browser session: nothing was looked at on screen, and axe in jsdom cannot check colour
+  contrast or layout. Do a visual pass (light and dark, phone width) before sign-off.
+- The live model (no key; recordings are seeded from the golden set), so chips never appeared in
+  the manual run; they are covered by tests only.
+- Production serving of web/dist (static hosting behind the SSO proxy) is not set up.

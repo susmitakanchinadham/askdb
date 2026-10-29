@@ -58,7 +58,7 @@ def test_display_names_are_business_wording():
 
 def test_single_value_sentence_uses_the_cell():
     out = compose(INTERP, page(["total_mrr"], [(98765.5,)]))
-    assert out.sentence == f"{INTERP}: Total MRR: $98,765.50."
+    assert out.sentence == f"{INTERP}: $98,765.50."
     assert out.note is None
     assert out.display_rows == [["$98,765.50"]]
 
@@ -100,7 +100,7 @@ def test_divide_by_zero_comes_back_as_null_and_reads_not_recorded():
     value = sqlite3.connect(":memory:").execute("SELECT 1.0 / 0").fetchone()[0]
     assert value is None
     out = compose(INTERP, page(["churn_rate"], [(value,)]))
-    assert out.sentence == f"{INTERP}: Churn Rate: Not recorded."
+    assert out.sentence == f"{INTERP}: Not recorded."
 
 
 def test_interpretation_with_banned_wording_is_dropped():
@@ -155,7 +155,7 @@ def test_a_failing_or_silent_phraser_keeps_the_default_sentence():
 
     for phraser in (boom, lambda i, labels: None):
         out = compose(INTERP, page(["total_mrr"], [(5000,)]), phraser=phraser)
-        assert out.sentence == f"{INTERP}: Total MRR: $5,000."
+        assert out.sentence == f"{INTERP}: $5,000."
 
 
 def test_phraser_is_not_used_for_multi_row_results():
@@ -190,3 +190,14 @@ def test_numbers_in_the_interpretation_are_not_judged():
 def test_stated_counts_are_allowed():
     assert check("Found 7 results.", extras=[7])
     assert not check("Found 8 results.", extras=[7])
+
+
+def test_single_value_without_a_reading_names_the_figure():
+    assert compose(None, page(["total_mrr"], [(5,)])).sentence == "Total MRR: $5."
+
+
+def test_a_reading_that_ends_in_a_stop_does_not_double_it():
+    out = compose("Revenue for 2025.", page(["n"], [(1,), (2,)]))
+    assert out.sentence == "Found 2 results for Revenue for 2025."
+    out = compose("Revenue for 2025.", page(["total_revenue"], [(5,)]))
+    assert out.sentence == "Revenue for 2025: $5."

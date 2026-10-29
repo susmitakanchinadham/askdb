@@ -13,12 +13,13 @@ Read-only, role-aware and audited. Lookups and aggregates only (see `docs/one-pa
 - `docs/PLAN.md` tracks progress. Update it when a task starts, finishes or is re-scoped. (It does not exist yet; create it before the first build task.)
 - SPEC section 13 lists open decisions. Do not settle one (stack, retention, cost checks) without asking.
 
-## Stack (assumed, pending SPEC 13.1)
+## Stack (backend assumed, frontend decided with the user)
 
-Python 3.12 + FastAPI backend managed with `uv`, React frontend, SQLite (stdlib `sqlite3`), pytest, ruff.
-The `uv`/pytest hints in `data/cloudmetrics_eval.yaml` point this way; confirm before scaffolding. If Next.js is chosen, update this file.
+Python 3.12 + FastAPI backend managed with `uv`, SQLite (stdlib `sqlite3`), pytest, ruff.
+Frontend: Vite + React + TypeScript in `web/` (Vitest, Testing Library, jest-axe); Next.js is not used.
+SPEC 13.1 is settled for the frontend only; the backend stack is still the assumption above.
 
-## Commands (planned; none exist until the project is scaffolded)
+## Commands
 
 ```
 uv sync                                  # install
@@ -27,9 +28,14 @@ uv run pytest                            # all tests
 uv run pytest tests/path/test_x.py::test_name   # one test
 uv run pytest tests/validation           # eval set (data/cloudmetrics_eval.yaml)
 uv run ruff check . && uv run ruff format --check .   # lint
+cd web && npm install                    # frontend deps
+cd web && npm test                       # component, app and axe tests
+cd web && npm run build                  # typecheck + production build
+cd web && npm run dev                    # dev server on :5173, proxies /api to :8000 as user dev/admin
+ASKDB_LLM=replay ...uvicorn ...          # dev only: golden-set replies instead of a live model
 ```
 
-## Folder layout (planned)
+## Folder layout
 
 ```
 docs/        SPEC.md, PLAN.md, one-pager.md
@@ -39,7 +45,7 @@ config/validation/   golden question sets (see data/cloudmetrics_eval.yaml)
 data/        sample SQLite db + sample configs
 src/askdb/   API, planner, validator, executor, composer, audit
 tests/       unit, integration, validation
-web/         React UI
+web/         React UI (Vite)
 ```
 
 ## Guardrails

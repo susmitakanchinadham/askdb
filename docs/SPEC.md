@@ -180,7 +180,7 @@ Behaviours:
 
 ## 13. Open items
 
-1. **Stack**: FastAPI + React or Next.js. Decide before build. (Database engine is fixed: SQLite.)
+1. **Stack**: frontend decided: Vite + React + TypeScript (`web/`), not Next.js. The FastAPI backend remains the working assumption and is not yet formally confirmed. (Database engine is fixed: SQLite.)
    - SQLite specifics to confirm: how the file is refreshed (snapshot schedule) and how large it is, since a single-file database has no replica and its date/time types are stored as text or numbers, so each date column's format is declared in its column description.
 2. **Quality gate**: only the "looks wrong" button was chosen. Recommended addition: an admin-owned golden question set (~50–100 questions with verified answers) run on every prompt/model/glossary change, since non-technical users rarely report errors.
 3. **Pagination vs. load**: pagination was chosen over a capped single view; the 1,000 row ceiling and rate limits are this spec's proposed compromise. Confirm.
