@@ -1,0 +1,9 @@
+{
+  "id": "churn_rate_q3_2025",
+  "question": "What was the subscription churn rate in Q3 2025?",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"answer_plan\", \"interpretation\": \"Answer to: What was the subscription churn rate in Q3 2025?\", \"sql\": \"SELECT\\n  (SELECT COUNT(*) FROM subscriptions\\n   WHERE status = 'churned' AND end_date >= '2025-07-01' AND end_date < '2025-10-01') * 1.0\\n  /\\n  (SELECT COUNT(*) FROM subscriptions\\n   WHERE start_date < '2025-07-01' AND (end_date IS NULL OR end_date >= '2025-07-01')) AS churn_rate\"}"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "id": "top10_customers_by_revenue",
+  "question": "Who are our top 10 customers by revenue?",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"answer_plan\", \"interpretation\": \"Answer to: Who are our top 10 customers by revenue?\", \"sql\": \"SELECT c.company_name, SUM(i.amount) AS total_revenue\\nFROM customers c\\nJOIN invoices i ON i.customer_id = c.customer_id\\nWHERE i.status = 'paid'\\nGROUP BY c.customer_id, c.company_name\\nORDER BY total_revenue DESC\\nLIMIT 10\"}"
+  ]
+}

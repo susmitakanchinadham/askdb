@@ -1,0 +1,9 @@
+{
+  "id": "enterprise_customers_on_trial",
+  "question": "Which Enterprise-size companies are currently on a trial?",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"answer_plan\", \"interpretation\": \"Answer to: Which Enterprise-size companies are currently on a trial?\", \"sql\": \"SELECT DISTINCT c.company_name, c.country\\nFROM customers c\\nJOIN subscriptions s ON s.customer_id = c.customer_id\\nWHERE c.company_size = 'Enterprise' AND s.status = 'trial'\"}"
+  ]
+}

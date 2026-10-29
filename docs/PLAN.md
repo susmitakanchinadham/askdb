@@ -15,7 +15,7 @@
   - Files: `src/askdb/executor.py`, `src/askdb/authorizer.py`, `tests/integration/test_executor.py`, `tests/integration/test_authorizer.py`, `tests/unit/test_pagination.py`
   - Verify: authorizer denies disallowed tables/columns and non-SELECT actions; every golden `expected_sql` returns rows; runaway query is interrupted at the deadline; over-1,000-row result truncates and is flagged; page 2 is stable and disjoint from page 1; concurrency cap holds.
 
-- [ ] **Slice 4: Planner with fake LLM client, first end-to-end ask**
+- [x] **Slice 4: Planner with fake LLM client, first end-to-end ask**
   - Note from slice 3: run answers with `Executor(db_path).execute(validated, page=1)` (`executor.py`); it returns a `Page` (`columns`, `rows`, `total` capped at 1,000, `truncated`, `has_more`, `as_of`) or raises `QueryTimeout`, `TooBusy`, `ExecutionError`. Their messages are for logs only; map each to business wording in the API layer. One `Executor` instance owns the concurrency cap, so create it once at startup.
   - Note from slice 2: on a rejection feed `result.code` and `result.message` back to the model for the single retry; they are written for the model and must never reach the user (they say SELECT, table, column). Only a small set of functions is allowed (see `_SAFE_TYPED` / `_SAFE_ANONYMOUS` in `validator.py`); `printf`, `hex`, `random`, `json_*`, recursive CTEs and bare `*` in non-COUNT places are refused, so tell the model the allowed list in the prompt.
   - Note from slice 1: use `config.render_model_text(layer)` as the prompt body and `main.load_checked_layer()` to get a layer already pruned against the live database (`layer.issues` lists what was dropped; `layer.version` is the glossary version for logs). The golden set loads from `config/validation/cloudmetrics.yaml`.
@@ -24,17 +24,21 @@
   - Verify: plan, clarify, refuse, retry-once, double-failure and outage unit tests; no result rows ever reach the LLM client; golden clarification (`revenue_ambiguous_mrr_or_invoices`, `recent_churn_relative`) and declined (`small_talk`, `data_change_request`, `injection_attempt`) outcomes; `uv run pytest tests/validation` passes offline on recorded outputs; opt-in live run against Claude.
 
 - [ ] **Slice 5: Answer composer and wording lint**
+  - Note from slice 4: `POST /ask` (`api/ask.py`) returns the interpretation line and the table with raw column aliases; the composer adds the sentence and business column names. User-facing strings currently live in `api/ask.py` `MESSAGES` and the clarify question/options come straight from the model; move both into `strings.py` and put them under the copy-lint (including model-written clarify text).
   - Note from slice 3: the executor raises exceptions with technical text (`QueryTimeout` -> suggest a shorter period, `TooBusy` -> try again shortly, `ExecutionError` -> generic failure); the copy-lint must cover the strings chosen for these, and the "more than 1,000 results" message driven by `Page.truncated`.
   - Files: `src/askdb/{composer,number_check,strings}.py`, `tests/unit/test_composer.py`, `tests/unit/test_copy_lint.py`
   - Verify: wrong LLM sentence falls back to table-only; empty, NULL and divide-by-zero cases; copy-lint fails on any banned word across user-facing strings and API errors; golden cases produce sentences matching result cells.
 
 - [ ] **Slice 6: Roles, access control, audit log**
+  - Note from slice 4: `Planner` is built once at startup from the full layer (`main.create_app`), so role filtering needs a planner (or `plan(..., layer/allowed)` argument) per role; the prompt text comes from `render_model_text(layer)`, so pass it the role-filtered layer. `/ask` has no user or role yet and calls `Planner.plan` directly.
   - Note from slice 2: pass the role-filtered `{table: columns}` as `allowed`. A hidden column is reported as `Code.UNKNOWN_COLUMN` and `SELECT *` silently expands to visible columns only, so the neutral role refusal must be chosen by the caller, not read from the validator message.
   - Blocked on SPEC open item 8: the database YAML has no roles or sensitivity fields, so decide where role allowlists live (separate roles file vs extending the YAML) before starting. The database YAML is not changed on assumption.
   - Files: role allowlist config (location per item 8), `src/askdb/{roles,audit}.py`, `tests/integration/test_access.py`, `tests/unit/test_audit.py`
   - Verify: per role, forbidden columns never appear in prompt, SQL or results; hidden-column question gets a neutral refusal; audit row written for answer, clarify, refuse and error with no result values.
 
 - [ ] **Slice 7: Follow-ups, chip re-run, "This looks wrong", rate limit**
+  - Note from slice 4: `Planner.plan(question, prior_interpretations, today)` already takes prior interpretations (text lines, no rows). `tests/validation/test_golden.py` skips cases with `conversation`; add `mrr_by_plan_followup_industry` and a recorded reply for it here. `/ask` takes no session id yet.
+  - Note from slice 4: `executor.ordered_sql` leaves a statement that has its own LIMIT unchanged (tie-breaker keys would change which rows it keeps), so pages of such a statement rely on SQLite's stable order for an unchanged snapshot.
   - Note from slice 3: the executor only has a global concurrency cap. "One running query per user" and the requests-per-minute limit (SPEC 5.1 item 6) still need a per-user guard in front of `Executor.execute`.
   - Files: `src/askdb/{session,feedback}.py`, planner/prompts and `api/` extensions, `tests/integration/test_followup.py`, `tests/unit/test_session.py`
   - Verify: golden follow-up `mrr_by_plan_followup_industry` passes; follow-up under a restricted role cannot reach hidden columns; session expiry (30 min) and "New question" reset; chip change re-runs through the same validator; feedback row holds question, plan, SQL, glossary version and row count; per-user rate limit.

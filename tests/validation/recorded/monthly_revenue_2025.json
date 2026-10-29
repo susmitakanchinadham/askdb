@@ -1,0 +1,9 @@
+{
+  "id": "monthly_revenue_2025",
+  "question": "Show monthly revenue for 2025.",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"answer_plan\", \"interpretation\": \"Answer to: Show monthly revenue for 2025.\", \"sql\": \"SELECT strftime('%Y-%m', invoice_date) AS month, SUM(amount) AS total_revenue\\nFROM invoices\\nWHERE status = 'paid'\\n  AND invoice_date >= '2025-01-01' AND invoice_date < '2026-01-01'\\nGROUP BY month\\nORDER BY month\"}"
+  ]
+}

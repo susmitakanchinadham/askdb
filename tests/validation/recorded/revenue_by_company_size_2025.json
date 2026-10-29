@@ -1,0 +1,9 @@
+{
+  "id": "revenue_by_company_size_2025",
+  "question": "Compare 2025 revenue across company size tiers.",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"answer_plan\", \"interpretation\": \"Answer to: Compare 2025 revenue across company size tiers.\", \"sql\": \"SELECT c.company_size, SUM(i.amount) AS total_revenue\\nFROM invoices i\\nJOIN customers c ON c.customer_id = i.customer_id\\nWHERE i.status = 'paid'\\n  AND i.invoice_date >= '2025-01-01' AND i.invoice_date < '2026-01-01'\\nGROUP BY c.company_size\"}"
+  ]
+}

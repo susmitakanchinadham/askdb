@@ -1,0 +1,9 @@
+{
+  "id": "active_customer_count",
+  "question": "How many active customers do we have?",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"answer_plan\", \"interpretation\": \"Answer to: How many active customers do we have?\", \"sql\": \"SELECT COUNT(DISTINCT customer_id) AS active_customers\\nFROM subscriptions\\nWHERE status = 'active'\"}"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "id": "account_owners_by_mrr",
+  "question": "Rank account owners by the MRR of their active subscriptions.",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"answer_plan\", \"interpretation\": \"Answer to: Rank account owners by the MRR of their active subscriptions.\", \"sql\": \"SELECT c.account_owner, SUM(s.mrr) AS total_mrr\\nFROM subscriptions s\\nJOIN customers c ON c.customer_id = s.customer_id\\nWHERE s.status = 'active'\\nGROUP BY c.account_owner\\nORDER BY total_mrr DESC\"}"
+  ]
+}

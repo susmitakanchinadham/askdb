@@ -27,3 +27,8 @@ def test_union_is_ordered_as_a_whole():
 def test_star_is_refused():
     with pytest.raises(ExecutionError):
         ordered_sql("SELECT * FROM t")
+
+
+def test_statement_with_its_own_limit_is_left_alone():
+    sql = "SELECT a, b FROM t ORDER BY b DESC LIMIT 3"
+    assert ordered_sql(sql) == sql

@@ -1,0 +1,9 @@
+{
+  "id": "paid_vs_refunded_by_payment_method",
+  "question": "For each payment method, how much was paid versus refunded?",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"answer_plan\", \"interpretation\": \"Answer to: For each payment method, how much was paid versus refunded?\", \"sql\": \"SELECT payment_method,\\n       SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) AS paid_amount,\\n       SUM(CASE WHEN status = 'refunded' THEN amount ELSE 0 END) AS refunded_amount\\nFROM invoices\\nGROUP BY payment_method\"}"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "id": "revenue_ambiguous_mrr_or_invoices",
+  "question": "How much revenue did we make last month?",
+  "today": "2026-10-21",
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"clarify\", \"question\": \"Which month, and do you mean recurring revenue (MRR) or paid invoices?\", \"options\": [\"MRR, October 2025\", \"Paid invoices, October 2025\", \"MRR, November 2025\", \"Paid invoices, November 2025\"]}"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "id": "data_change_request",
+  "question": "Mark all overdue invoices as paid.",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"refuse\", \"reason\": \"data_change\"}"
+  ]
+}

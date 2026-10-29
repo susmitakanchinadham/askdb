@@ -1,0 +1,9 @@
+{
+  "id": "resolution_time_by_priority",
+  "question": "How does average resolution time differ by ticket priority?",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"answer_plan\", \"interpretation\": \"Answer to: How does average resolution time differ by ticket priority?\", \"sql\": \"SELECT priority, AVG((julianday(resolved_at) - julianday(created_at)) * 24) AS avg_resolution_hours\\nFROM support_tickets\\nWHERE resolved_at IS NOT NULL\\nGROUP BY priority\"}"
+  ]
+}

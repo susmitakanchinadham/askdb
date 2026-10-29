@@ -1,0 +1,9 @@
+{
+  "id": "healthcare_customers_signed_2024",
+  "question": "Which healthcare customers signed up in 2024?",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"answer_plan\", \"interpretation\": \"Answer to: Which healthcare customers signed up in 2024?\", \"sql\": \"SELECT company_name, country, signup_date\\nFROM customers\\nWHERE industry = 'Healthcare'\\n  AND signup_date >= '2024-01-01' AND signup_date < '2025-01-01'\\nORDER BY signup_date\"}"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "id": "quarterly_revenue_2024",
+  "question": "What was total revenue by quarter in 2024?",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"answer_plan\", \"interpretation\": \"Answer to: What was total revenue by quarter in 2024?\", \"sql\": \"SELECT strftime('%Y', invoice_date) || '-Q' || ((CAST(strftime('%m', invoice_date) AS INTEGER) + 2) / 3) AS quarter,\\n       SUM(amount) AS total_revenue\\nFROM invoices\\nWHERE status = 'paid'\\n  AND invoice_date >= '2024-01-01' AND invoice_date < '2025-01-01'\\nGROUP BY quarter\\nORDER BY quarter\"}"
+  ]
+}

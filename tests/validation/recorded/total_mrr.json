@@ -1,0 +1,9 @@
+{
+  "id": "total_mrr",
+  "question": "What is our current total MRR?",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"answer_plan\", \"interpretation\": \"Answer to: What is our current total MRR?\", \"sql\": \"SELECT SUM(mrr) AS total_mrr\\nFROM subscriptions\\nWHERE status = 'active'\"}"
+  ]
+}

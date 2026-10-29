@@ -1,0 +1,9 @@
+{
+  "id": "overdue_invoices_over_1000",
+  "question": "List overdue invoices over $1,000.",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"answer_plan\", \"interpretation\": \"Answer to: List overdue invoices over $1,000.\", \"sql\": \"SELECT i.invoice_id, c.company_name, i.invoice_date, i.amount\\nFROM invoices i\\nJOIN customers c ON c.customer_id = i.customer_id\\nWHERE i.status = 'overdue' AND i.amount > 1000\\nORDER BY i.amount DESC\"}"
+  ]
+}

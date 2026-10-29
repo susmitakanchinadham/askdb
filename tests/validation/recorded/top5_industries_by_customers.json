@@ -1,0 +1,9 @@
+{
+  "id": "top5_industries_by_customers",
+  "question": "Which five industries have the most customers?",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"answer_plan\", \"interpretation\": \"Answer to: Which five industries have the most customers?\", \"sql\": \"SELECT industry, COUNT(*) AS customer_count\\nFROM customers\\nGROUP BY industry\\nORDER BY customer_count DESC\\nLIMIT 5\"}"
+  ]
+}

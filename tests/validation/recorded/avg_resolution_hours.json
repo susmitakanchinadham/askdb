@@ -1,0 +1,9 @@
+{
+  "id": "avg_resolution_hours",
+  "question": "What is the average ticket resolution time in hours?",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"answer_plan\", \"interpretation\": \"Answer to: What is the average ticket resolution time in hours?\", \"sql\": \"SELECT AVG((julianday(resolved_at) - julianday(created_at)) * 24) AS avg_resolution_hours\\nFROM support_tickets\\nWHERE resolved_at IS NOT NULL\"}"
+  ]
+}

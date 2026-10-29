@@ -56,10 +56,17 @@ class Page:
 
 
 def ordered_sql(sql: str) -> str:
-    """Append every result column (by position) to the ORDER BY so row order is deterministic."""
+    """Append every result column (by position) to the ORDER BY so row order is deterministic.
+
+    A statement with its own LIMIT is returned unchanged: it already caps the rows and extra
+    keys could alter which ones it keeps.
+    """
     root = sqlglot.parse_one(sql, dialect=DIALECT)
     if any(isinstance(e, exp.Star) for e in root.selects):
         raise ExecutionError("validated statement still contains a star")
+    if isinstance(root, exp.Select) and (root.args.get("limit") or root.args.get("offset")):
+        # Extra sort keys would change which rows the statement's own LIMIT keeps.
+        return sql
     width = len(root.selects)
     if not isinstance(root, exp.Select):  # e.g. UNION: order the combined result
         root = exp.select("*").from_(root.subquery("u"))

@@ -1,0 +1,9 @@
+{
+  "id": "small_talk",
+  "question": "Hi, how are you doing today?",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"refuse\", \"reason\": \"out_of_scope\"}"
+  ]
+}

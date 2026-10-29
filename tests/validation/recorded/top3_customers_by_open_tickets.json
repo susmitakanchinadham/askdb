@@ -1,0 +1,9 @@
+{
+  "id": "top3_customers_by_open_tickets",
+  "question": "Which three customers have the most open tickets?",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"answer_plan\", \"interpretation\": \"Answer to: Which three customers have the most open tickets?\", \"sql\": \"SELECT c.company_name, COUNT(*) AS open_tickets\\nFROM support_tickets t\\nJOIN customers c ON c.customer_id = t.customer_id\\nWHERE t.resolved_at IS NULL\\nGROUP BY c.customer_id, c.company_name\\nORDER BY open_tickets DESC\\nLIMIT 3\"}"
+  ]
+}

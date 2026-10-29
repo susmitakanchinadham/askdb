@@ -1,0 +1,9 @@
+{
+  "id": "critical_tickets_open",
+  "question": "Show all critical tickets that are still unresolved.",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"answer_plan\", \"interpretation\": \"Answer to: Show all critical tickets that are still unresolved.\", \"sql\": \"SELECT t.ticket_id, c.company_name, t.created_at, t.category, t.status, t.subject\\nFROM support_tickets t\\nJOIN customers c ON c.customer_id = t.customer_id\\nWHERE t.priority = 'critical' AND t.resolved_at IS NULL\\nORDER BY t.created_at\"}"
+  ]
+}

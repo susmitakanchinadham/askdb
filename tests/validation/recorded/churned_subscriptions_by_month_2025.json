@@ -1,0 +1,9 @@
+{
+  "id": "churned_subscriptions_by_month_2025",
+  "question": "How many subscriptions churned each month in 2025?",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"answer_plan\", \"interpretation\": \"Answer to: How many subscriptions churned each month in 2025?\", \"sql\": \"SELECT strftime('%Y-%m', end_date) AS churn_month, COUNT(*) AS churned_subscriptions\\nFROM subscriptions\\nWHERE status = 'churned' AND end_date IS NOT NULL\\n  AND end_date >= '2025-01-01' AND end_date < '2026-01-01'\\nGROUP BY churn_month\\nORDER BY churn_month\"}"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "id": "new_customers_per_year",
+  "question": "How many new customers signed up each year?",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"answer_plan\", \"interpretation\": \"Answer to: How many new customers signed up each year?\", \"sql\": \"SELECT strftime('%Y', signup_date) AS year, COUNT(*) AS new_customers\\nFROM customers\\nGROUP BY year\\nORDER BY year\"}"
+  ]
+}

@@ -1,0 +1,33 @@
+Slice 4: Planner with fake LLM client, first end-to-end ask
+
+Added
+- src/askdb/llm.py: LLMClient protocol (text in, text out), FakeLLMClient (queued replies, records
+  prompts), AnthropicClient (stdlib urllib, key from ANTHROPIC_API_KEY, model claude-sonnet-5-5 or
+  ASKDB_MODEL), LLMUnavailable for any outage/credential/parse failure.
+- src/askdb/prompts.py: system prompt (rules, reply shapes, allowed functions, today, glossary text)
+  and user prompt (question, prior interpretations, validator code+message on retry).
+- src/askdb/planner.py: Planner.plan -> Answer | Clarify | Refuse | Unavailable. One retry on a
+  validator rejection or malformed reply; second failure -> Refuse("validation_failed"); an
+  outage returns Unavailable immediately with no retry.
+- src/askdb/api/ask.py + main.create_app(llm=...): POST /ask. Responses never contain the statement.
+  Without ANTHROPIC_API_KEY the app answers with the friendly outage message.
+- Fix found by the golden run: executor.ordered_sql left statements with their own LIMIT unchanged
+  (added tie-break keys changed which rows top-N kept). Unit test added.
+- Tests: tests/unit/test_planner.py, tests/integration/test_ask.py, tests/validation/test_golden.py,
+  tests/validation/recorded/*.json (28 cases).
+
+Verified
+- 293 tests pass offline; ruff check and format clean.
+- Plan, clarify, refuse, retry-once, double failure and outage covered; the prompts sent during an
+  /ask never contain any customer value from the result rows.
+- Golden set replays offline: every expected_sql case returns the same rows as its reference query;
+  clarification and declined cases give the right outcome type.
+
+NOT verified
+- The opt-in live run against Claude (ASKDB_LIVE=1) was not executed: no API key is available to
+  this session and SPEC open item 7 (provider approval for glossary text) is unresolved.
+- The recorded replies are seeded from the golden expected_sql, not captured from a model. Re-record
+  with ASKDB_LIVE=1 ASKDB_RECORD=1 once a live run is approved.
+- Follow-up golden cases (conversation) are skipped until slice 7.
+
+Notes recorded in docs/PLAN.md under slices 5, 6 and 7.

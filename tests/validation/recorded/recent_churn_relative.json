@@ -1,0 +1,9 @@
+{
+  "id": "recent_churn_relative",
+  "question": "How many subscriptions have churned recently?",
+  "today": "2026-10-21",
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"clarify\", \"question\": \"What period counts as recently?\", \"options\": [\"Last 30 days of data\", \"Last 90 days of data\", \"Last 12 months of data\"]}"
+  ]
+}

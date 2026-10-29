@@ -1,0 +1,9 @@
+{
+  "id": "monthly_vs_annual_mrr",
+  "question": "Compare MRR from monthly versus annual billing subscriptions.",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"answer_plan\", \"interpretation\": \"Answer to: Compare MRR from monthly versus annual billing subscriptions.\", \"sql\": \"SELECT billing_cycle, COUNT(*) AS active_subscriptions, SUM(mrr) AS total_mrr\\nFROM subscriptions\\nWHERE status = 'active'\\nGROUP BY billing_cycle\"}"
+  ]
+}

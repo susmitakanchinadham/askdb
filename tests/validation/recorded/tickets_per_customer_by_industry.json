@@ -1,0 +1,9 @@
+{
+  "id": "tickets_per_customer_by_industry",
+  "question": "Which industry raises the most support tickets per customer?",
+  "today": null,
+  "source": "seeded from the golden set; replace with live recordings (ASKDB_LIVE=1 ASKDB_RECORD=1)",
+  "replies": [
+    "{\"type\": \"answer_plan\", \"interpretation\": \"Answer to: Which industry raises the most support tickets per customer?\", \"sql\": \"SELECT c.industry,\\n       COUNT(t.ticket_id) * 1.0 / COUNT(DISTINCT c.customer_id) AS tickets_per_customer\\nFROM customers c\\nLEFT JOIN support_tickets t ON t.customer_id = c.customer_id\\nGROUP BY c.industry\\nORDER BY tickets_per_customer DESC\"}"
+  ]
+}
